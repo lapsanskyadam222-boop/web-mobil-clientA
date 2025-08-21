@@ -2,6 +2,10 @@ import Carousel from '@/components/Carousel';
 import { SiteContent } from '@/lib/types';
 import { getBaseUrl } from '@/lib/getBaseUrl';
 
+// 🔑 toto je dôležité – zakáže cache a prinúti dynamický render
+export const dynamic = 'force-dynamic';
+// alternatívne by stačilo aj: export const revalidate = 0;
+
 async function getContent(): Promise<SiteContent | null> {
   const base = getBaseUrl();                  // <— ABSOLÚTNA URL
   const url = `${base}/api/content`;
