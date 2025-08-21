@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';             // ← dôležité: bcryptjs (nie bcrypt)
 import { signSession } from '@/lib/auth';
 
 export async function POST(req: Request) {
@@ -9,7 +9,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Chýba email/heslo' }, { status: 400 });
     }
 
-    const adminEmail = process.env.ADMIN_EMAIL;
+    // fallback cez NEXT_PUBLIC_ADMIN_EMAIL (pre istotu)
+    const adminEmail = process.env.ADMIN_EMAIL ?? process.env.NEXT_PUBLIC_ADMIN_EMAIL;
     const hash = process.env.ADMIN_PASSWORD_HASH;
     const secretSet = !!process.env.AUTH_SECRET;
 
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     }
 
     const okEmail = email === adminEmail;
-    const okPass = await bcrypt.compare(password, hash);
+    const okPass = await bcrypt.compare(password, hash);  // funguje s bcrypt hashom
 
     if (!okEmail || !okPass) {
       return NextResponse.json({ error: 'Zlé prihlasovacie údaje' }, { status: 401 });
