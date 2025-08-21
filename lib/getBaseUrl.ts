@@ -1,15 +1,25 @@
 // lib/getBaseUrl.ts
-import 'server-only';
-import { headers } from 'next/headers';
 
+/**
+ * Izomorfné zistenie base URL:
+ * - v prehliadači vracia "" (použijú sa relatívne cesty)
+ * - na serveri:
+ *    1) NEXT_PUBLIC_BASE_URL ak je nastavené (napr. https://moj-web.vercel.app)
+ *    2) VERCEL_URL (bez protokolu) -> doplní https://
+ *    3) fallback na http://localhost:3000 (dev)
+ */
 export function getBaseUrl() {
-  // 1) ak je v env nastavená absolútna URL (napr. https://moj-web.vercel.app), použi ju
-  const fromEnv = process.env.NEXT_PUBLIC_BASE_URL;
-  if (fromEnv && /^https?:\/\//i.test(fromEnv)) return fromEnv.replace(/\/+$/, '');
+  // Client: relatívne volania sú najbezpečnejšie
+  if (typeof window !== 'undefined') return '';
 
-  // 2) inak poskladaj URL z hlavičiek (funguje lokálne aj na Verceli)
-  const h = headers();
-  const proto = h.get('x-forwarded-proto') ?? 'http';
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
-  return `${proto}://${host}`;
+  // Server: uprednostni explicitnú absolútnu URL
+  const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
+  if (envBase) return envBase;
+
+  // Vercel poskytuje VERCEL_URL bez protokolu
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) return `https://${vercelUrl}`;
+
+  // Lokálny vývoj
+  return 'http://localhost:3000';
 }
