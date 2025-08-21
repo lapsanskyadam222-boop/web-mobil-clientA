@@ -2,14 +2,21 @@ import Carousel from '@/components/Carousel';
 import type { SiteContent } from '@/lib/types';
 import { headers } from 'next/headers';
 
-async function getContent(): Promise<SiteContent | null> {
-  // Postavíme absolútnu URL z hlavičiek (funguje lokálne aj na Verceli)
-  const h = headers();
-  const proto = h.get('x-forwarded-proto') ?? 'http';
-  const host = h.get('host');
-  if (!host) return null;
+export const dynamic = 'force-dynamic';
 
-  const url = `${proto}://${host}/api/content`;
+function absUrl(path: string) {
+  const h = headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host');
+  const proto = h.get('x-forwarded-proto') ?? 'https';
+  if (host) return `${proto}://${host}${path}`;
+  // fallback pre build alebo neštandardné prostredie
+  const vercel = process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel}${path}`;
+  return `http://localhost:3000${path}`;
+}
+
+async function getContent(): Promise<SiteContent | null> {
+  const url = absUrl('/api/content');
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) return null;
   return res.json();
