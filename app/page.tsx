@@ -1,23 +1,22 @@
 import Carousel from '@/components/Carousel';
-import type { SiteContent } from '@/lib/types';
 import { headers } from 'next/headers';
+import type { SiteContent } from '@/lib/types';
 
-export const dynamic = 'force-dynamic';
-
-function absUrl(path: string) {
+async function getBaseUrl(): Promise<string> {
+  // funguje v Server Components aj na Verceli
   const h = headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host');
   const proto = h.get('x-forwarded-proto') ?? 'https';
-  if (host) return `${proto}://${host}${path}`;
-  // fallback pre build alebo neštandardné prostredie
-  const vercel = process.env.VERCEL_URL;
-  if (vercel) return `https://${vercel}${path}`;
-  return `http://localhost:3000${path}`;
+  const host = h.get('x-forwarded-host') ?? h.get('host');
+
+  if (host) return `${proto}://${host}`;
+  if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3000';
 }
 
 async function getContent(): Promise<SiteContent | null> {
-  const url = absUrl('/api/content');
-  const res = await fetch(url, { cache: 'no-store' });
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/content`, { cache: 'no-store' });
   if (!res.ok) return null;
   return res.json();
 }
