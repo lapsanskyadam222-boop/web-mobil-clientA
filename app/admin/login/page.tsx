@@ -1,5 +1,7 @@
 'use client';
+
 import { useState } from 'react';
+import { getBaseUrl } from '@/lib/getBaseUrl';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');
@@ -9,24 +11,43 @@ export default function AdminLogin() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr('');
-    const res = await fetch('/api/auth/login', {
+
+    const base = getBaseUrl(); // v prehliadači vráti prázdny string -> relatívne volanie
+    const res = await fetch(`${base}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
-    if (res.ok) window.location.href = '/admin';
-    else setErr((await res.json()).error ?? 'Prihlásenie zlyhalo');
+
+    if (res.ok) {
+      window.location.href = '/admin';
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setErr(data?.error ?? 'Prihlásenie zlyhalo');
+    }
   }
 
   return (
     <div className="max-w-sm mx-auto">
       <h1 className="text-xl font-semibold mb-4">Admin prihlásenie</h1>
       <form onSubmit={submit} className="space-y-3">
-        <input className="w-full border p-2 rounded" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-        <input className="w-full border p-2 rounded" placeholder="Heslo" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
+        <input
+          className="w-full border p-2 rounded"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="w-full border p-2 rounded"
+          placeholder="Heslo"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         {err && <p className="text-red-600 text-sm">{err}</p>}
         <button className="w-full bg-black text-white py-2 rounded">Prihlásiť</button>
       </form>
     </div>
   );
 }
+
