@@ -6,20 +6,16 @@ import Carousel from '@/components/Carousel';
 import { SiteContent } from '@/lib/types';
 import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
 
-type ContentResult =
-  | { ok: true; data: SiteContent }
-  | { ok: false; status?: number; error?: string };
-
-async function getContent(): Promise<ContentResult> {
+async function getContent(): Promise<{ ok: boolean; data?: SiteContent; error?: string; status?: number }> {
   try {
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
 
     const res = await fetch(url, { cache: 'no-store' });
-
     if (!res.ok) {
       return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
     }
+
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
   } catch (e: any) {
@@ -45,16 +41,19 @@ export default async function HomePage() {
     );
   }
 
-  const { logoUrl, carousel = [], text = '' } = result.data;
+  const data = result.data!;
+  const logoUrl = data.logoUrl ?? null;
+  const images = Array.isArray(data.carousel) ? data.carousel : [];
+  const text = data.text ?? '';
 
   return (
     <main className="flex flex-col items-center gap-4 p-6">
-      {logoUrl && (
+      {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
-      )}
+      ) : null}
 
-      {carousel.length > 0 && <Carousel images={carousel} />}
+      {images.length > 0 && <Carousel images={images} />}
 
       {text ? (
         <article className="prose max-w-none text-base whitespace-pre-wrap">{text}</article>
