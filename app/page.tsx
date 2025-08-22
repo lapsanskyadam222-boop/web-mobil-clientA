@@ -4,23 +4,26 @@ export const revalidate = 0;
 
 import Carousel from '@/components/Carousel';
 import { SiteContent } from '@/lib/types';
-import { getBaseUrl } from '@/lib/getBaseUrl';
+import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
 
-async function getContent(): Promise<{ ok: boolean; data?: SiteContent; error?: string; status?: number }> {
+async function getContent(): Promise<{
+  ok: boolean;
+  data?: SiteContent;
+  error?: string;
+  status?: number;
+}> {
   try {
-    const base = getBaseUrl();
+    const base = getBaseUrlServer();
     const url = `${base}/api/content`;
 
     const res = await fetch(url, {
-      cache: 'no-store',
-      // POZOR: keď používame cache:'no-store', nedávaj sem next: { revalidate: 0 }
-      // (Vercel na to dáva warning). Necháme len cache:'no-store'.
+      cache: 'no-store',            // vždy aktuálne
+      // next: { revalidate: 0 },    // už netreba, keď používame no-store
     });
 
     if (!res.ok) {
       return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
     }
-
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
   } catch (e: any) {
@@ -61,9 +64,7 @@ export default async function HomePage() {
       {images.length > 0 && <Carousel images={images} />}
 
       {text ? (
-        <article className="prose max-w-none text-base whitespace-pre-wrap">
-          {text}
-        </article>
+        <article className="prose max-w-none text-base whitespace-pre-wrap">{text}</article>
       ) : (
         <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
       )}
