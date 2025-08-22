@@ -1,25 +1,30 @@
 // lib/getBaseUrl.ts
-
 /**
- * Izomorfné zistenie base URL:
- * - v prehliadači vracia "" (použijú sa relatívne cesty)
- * - na serveri:
- *    1) NEXT_PUBLIC_BASE_URL ak je nastavené (napr. https://moj-web.vercel.app)
- *    2) VERCEL_URL (bez protokolu) -> doplní https://
- *    3) fallback na http://localhost:3000 (dev)
+ * Robustná detekcia absolútnej URL pre serverové fetch-e.
+ * Preferuje NEXT_PUBLIC_BASE_URL (ak ju neskôr pridáš),
+ * inak skladá URL z X-Forwarded-* hlavičiek (Vercel) a host/proto fallback.
  */
-export function getBaseUrl() {
-  // Client: relatívne volania sú najbezpečnejšie
-  if (typeof window !== 'undefined') return '';
+import { headers } from 'next/headers';
 
-  // Server: uprednostni explicitnú absolútnu URL
-  const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim();
-  if (envBase) return envBase;
+export function getBaseUrl(): string {
+  // 1) Ak by si niekedy chcel natvrdo nastaviť doménu vo Verceli:
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    return process.env.NEXT_PUBLIC_BASE_URL.replace(/\/+$/, '');
+  }
 
-  // Vercel poskytuje VERCEL_URL bez protokolu
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-  if (vercelUrl) return `https://${vercelUrl}`;
+  const h = headers();
 
-  // Lokálny vývoj
-  return 'http://localhost:3000';
+  // Vercel posiela X-Forwarded-Proto/Host – použijeme ich, ak sú.
+  const xfProto = h.get('x-forwarded-proto');
+  const xfHost  = h.get('x-forwarded-host');
+
+  if (xfProto && xfHost) {
+    return `${xfProto}://${xfHost}`; // napr. https://web-xxx.vercel.app
+  }
+
+  // Fallback – ak by X-Forwarded-* neprišli:
+  const host  = h.get('host') ?? 'localhost:3000';
+  const proto = (h.get('x-forwarded-proto') ?? 'https').split(',')[0];
+
+  return `${proto}://${host}`;
 }
