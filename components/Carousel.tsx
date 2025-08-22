@@ -4,10 +4,17 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** Pomer strán každého slidu. Pr.: "4 / 5" (default), "1 / 1", "16 / 9" */
+  /** Pomer strán – akceptuje "4 / 5" alebo "4/5". Default 4/5 (ako IG post). */
   aspect?: string;
   className?: string;
 };
+
+function aspectToPercent(aspect: string | undefined) {
+  const raw = (aspect ?? '4 / 5').replace(/\s/g, '');
+  const [w, h] = raw.split('/').map((n) => Number(n));
+  if (!w || !h) return 125;          // fallback = 4/5 -> 125%
+  return (h / w) * 100;              // padding-top v %
+}
 
 export default function Carousel({
   images,
@@ -19,30 +26,25 @@ export default function Carousel({
   const [dragging, setDragging] = React.useState(false);
 
   const startX = React.useRef(0);
-  const widthRef = React.useRef(1);
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const widthRef = React.useRef(1);
   const lockRef = React.useRef<'x' | 'y' | null>(null);
 
   const total = Array.isArray(images) ? images.length : 0;
   if (total === 0) return null;
 
-  // Zmeraj šírku viewportu (pre výpočet drag percent)
+  // šírka viewportu na prepočet drag percent
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-
-    const measure = () => {
-      // fallback, aby nebol nikdy 0
-      widthRef.current = Math.max(1, el.clientWidth || 0);
-    };
+    const measure = () => (widthRef.current = Math.max(1, el.clientWidth || 0));
     measure();
-
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  // Drag / swipe
+  // drag
   const beginDrag = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
@@ -50,13 +52,11 @@ export default function Carousel({
     setDragging(true);
     setDragX(0);
   };
-
   const moveDrag = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
-
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return; // neblokuj vertikálny scroll
+      if (Math.abs(dx) < 6) return;
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -64,11 +64,9 @@ export default function Carousel({
       setDragX(dx);
     }
   };
-
   const endDrag = () => {
     if (!dragging) return;
-    const w = Math.max(1, widthRef.current);
-    const delta = dragX / w;
+    const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
     if (delta <= -0.15 && index < total - 1) next = index + 1;
     if (delta >= 0.15 && index > 0)        next = index - 1;
@@ -82,14 +80,14 @@ export default function Carousel({
   const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
 
   const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
+  const padTop = aspectToPercent(aspect); // napr. 125 pre 4/5
 
   return (
     <section className={`relative w-full ${className}`}>
-      {/* VIEWPORT – overflow-hidden: vždy len jeden slide. Dočasná minHeight aby bolo hneď niečo vidno */}
+      {/* VIEWPORT */}
       <div
         ref={wrapRef}
         className="relative w-full overflow-hidden rounded-2xl bg-black/5"
-        style={{ minHeight: '40vh' }} /* TODO: keď bude všetko OK, môžeš vymazať */
       >
         {/* TRACK */}
         <div
@@ -106,25 +104,26 @@ export default function Carousel({
           onPointerLeave={endDrag}
         >
           {images.map((src, i) => (
-            <div
-              key={i}
-              className="relative basis-full shrink-0 grow-0"
-              style={{ aspectRatio: aspect }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={src}
-                alt={`slide-${i + 1}`}
-                className="absolute inset-0 block h-full w-full object-cover"
-                draggable={false}
-                loading={i === 0 ? 'eager' : 'lazy'}
-              />
+            <div key={i} className="relative basis-full shrink-0 grow-0">
+              {/* PADDING-BOX – drží pomer strán nezávisle od podpory aspect-ratio */}
+              <div style={{ paddingTop: `${padTop}%` }} />
+              {/* OBSAH S NAPEVNO ROZMERMI */}
+              <div className="absolute inset-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt={`slide-${i + 1}`}
+                  className="h-full w-full object-cover"
+                  draggable={false}
+                  loading={i === 0 ? 'eager' : 'lazy'}
+                />
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Šípky (desktop) */}
+      {/* šípky (desktop) */}
       {total > 1 && (
         <>
           <button
@@ -146,7 +145,7 @@ export default function Carousel({
         </>
       )}
 
-      {/* Bodky */}
+      {/* bodky */}
       {total > 1 && (
         <div className="mt-2 flex justify-center gap-1.5">
           {images.map((_, i) => (
