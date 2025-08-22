@@ -1,9 +1,7 @@
-// lib/getBaseUrlClient.ts
-
 /**
- * Vracia absolútnu base URL na klientovi.
- * V prehliadači použije window.location.origin,
- * inak (napr. počas build-time) sáhne po NEXT_PUBLIC_BASE_URL.
+ * Client‑side base URL (pre 'use client' komponenty).
+ * Ak bežíme v prehliadači, použijeme window.location.origin,
+ * inak fallback na NEXT_PUBLIC_BASE_URL.
  */
 export function getBaseUrlClient(): string {
   if (typeof window !== 'undefined') {

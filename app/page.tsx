@@ -2,18 +2,20 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import Carousel from '../components/Carousel';
-import type { SiteContent } from '../lib/types';
-import { getBaseUrlServer } from '../lib/getBaseUrlServer';
+import Carousel from '@/components/Carousel';
+import { SiteContent } from '@/lib/types';
+import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
 
-async function getContent(): Promise<{ ok: boolean; data?: SiteContent; error?: string; status?: number }> {
+type ContentResult =
+  | { ok: true; data: SiteContent }
+  | { ok: false; status?: number; error?: string };
+
+async function getContent(): Promise<ContentResult> {
   try {
     const base = getBaseUrlServer();
-    const url  = `${base}/api/content`;
+    const url = `${base}/api/content`;
 
-    const res = await fetch(url, {
-      cache: 'no-store', // chceme okamžite aktuálne dáta
-    });
+    const res = await fetch(url, { cache: 'no-store' });
 
     if (!res.ok) {
       return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
@@ -43,19 +45,16 @@ export default async function HomePage() {
     );
   }
 
-  const data    = result.data!;
-  const logoUrl = data.logoUrl ?? null;
-  const images  = Array.isArray(data.carousel) ? data.carousel : [];
-  const text    = data.text ?? '';
+  const { logoUrl, carousel = [], text = '' } = result.data;
 
   return (
     <main className="flex flex-col items-center gap-4 p-6">
-      {logoUrl ? (
+      {logoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
-      ) : null}
+      )}
 
-      {images.length > 0 && <Carousel images={images} />}
+      {carousel.length > 0 && <Carousel images={carousel} />}
 
       {text ? (
         <article className="prose max-w-none text-base whitespace-pre-wrap">{text}</article>

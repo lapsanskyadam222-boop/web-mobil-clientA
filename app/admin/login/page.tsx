@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getBaseUrlClient } from '../../../lib/getBaseUrlClient';
+import { getBaseUrlClient } from '@/lib/getBaseUrlClient';
 
 export default function AdminLoginPage() {
   const [email, setEmail]           = useState('');
