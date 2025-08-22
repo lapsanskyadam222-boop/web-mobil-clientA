@@ -5,7 +5,8 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  aspectClass?: string;   // napr. 'aspect-[4/5]' (IG post), alebo 'aspect-video', 'aspect-square'
+  /** napr. 'aspect-[4/5]' (IG post), 'aspect-square', 'aspect-video' */
+  aspectClass?: string;
   className?: string;
 };
 
@@ -15,100 +16,88 @@ export default function Carousel({
   className = '',
 }: Props) {
   const [index, setIndex] = React.useState(0);
-  const [dragX, setDragX] = React.useState(0);       // aktuálne ťahanie v px
+  const [dragX, setDragX] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
-
-  const trackRef = React.useRef<HTMLDivElement | null>(null);
-  const startXRef = React.useRef(0);
-  const lockedRef = React.useRef<'x' | 'y' | null>(null);
+  const startX = React.useRef(0);
+  const widthRef = React.useRef(1);
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const locked = React.useRef<'x' | 'y' | null>(null);
 
   const total = images.length;
-  if (!total) return null;
 
-  const canPrev = index > 0;
-  const canNext = index < total - 1;
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const resize = () => {
+      widthRef.current = el.clientWidth || 1;
+    };
+    resize();
+    const obs = new ResizeObserver(resize);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
-  // --- Helpers -------------------------------------------------
-  const snapTo = React.useCallback(
-    (to: number) => setIndex(Math.max(0, Math.min(total - 1, to))),
-    [total]
-  );
-
-  const prev = () => snapTo(index - 1);
-  const next = () => snapTo(index + 1);
-
-  // --- Pointer/Touch drag -------------------------------------
-  function onPointerDown(e: React.PointerEvent) {
+  // --- pointer handlers ---
+  const onPointerDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
-    startXRef.current = e.clientX;
+    startX.current = e.clientX;
+    locked.current = null;
     setDragging(true);
-    lockedRef.current = null;
-  }
+    setDragX(0);
+  };
 
-  function onPointerMove(e: React.PointerEvent) {
+  const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging) return;
+    const dx = e.clientX - startX.current;
 
-    const dx = e.clientX - startXRef.current;
-
-    // lock smeru (x/y) po pár px, aby scroll na stránke neblokoval
-    if (!lockedRef.current) {
-      if (Math.abs(dx) > 6) lockedRef.current = 'x';
+    if (!locked.current) {
+      if (Math.abs(dx) > 6) locked.current = 'x';
+      else return;
     }
-    if (lockedRef.current !== 'x') return;
+    if (locked.current === 'x') {
+      e.preventDefault();
+      setDragX(dx);
+    }
+  };
 
-    setDragX(dx);
-  }
-
-  function endDrag() {
+  const onPointerUp = () => {
     if (!dragging) return;
-    const threshold = 60; // koľko px treba potiahnuť na zmenu slidu
-    if (dragX <= -threshold && canNext) {
-      next();
-    } else if (dragX >= threshold && canPrev) {
-      prev();
-    }
+    const w = widthRef.current;
+    const delta = dragX / w;
+
+    let next = index;
+    if (delta <= -0.15 && index < total - 1) next = index + 1;
+    if (delta >= 0.15 && index > 0) next = index - 1;
+
+    setIndex(next);
     setDragX(0);
     setDragging(false);
-    lockedRef.current = null;
-  }
+    locked.current = null;
+  };
 
-  // --- Klávesy (ľavá/pravá) ----------------------------------
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'ArrowRight') next();
-      if (e.key === 'ArrowLeft') prev();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [next, prev]);
+  // alias → použijeme v JSX
+  const endDrag = () => onPointerUp();
 
-  // --- ŠTÝLY A LAYOUT -----------------------------------------
-  // šírka „slajdu“ = 100% viewportu, track posúvame translateX
-  const baseTranslate = -index * 100; // v %
-  // dragX prepočítame na % podľa aktuálnej šírky track viewportu
-  const dragPercent = (() => {
-    const wrap = trackRef.current?.parentElement;
-    if (!wrap) return 0;
-    const w = wrap.clientWidth || 1;
-    return (dragX / w) * 100;
-  })();
+  const goPrev = () => setIndex((i) => Math.max(0, i - 1));
+  const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
+
+  const tx = -(index * 100) + (dragX / widthRef.current) * 100;
+
+  if (total === 0) return null;
 
   return (
-    <section
-      className={`w-full ${className}`.trim()}
-      aria-roledescription="carousel"
-    >
-      {/* Viewport */}
+    <section className={`relative w-full ${className}`}>
+      {/* VIEWPORT */}
       <div
-        className={`relative w-full overflow-hidden rounded-xl bg-black/3 ${aspectClass}`}
+        ref={wrapRef}
+        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
       >
-        {/* Track (riadok so slajdmi) */}
+        {/* TRACK */}
         <div
-          ref={trackRef}
-          className="flex h-full w-full touch-pan-y select-none"
+          className="flex touch-pan-y select-none"
           style={{
-            transform: `translateX(calc(${baseTranslate}% + ${dragPercent}%))`,
-            transition: dragging ? 'none' : 'transform 300ms ease',
+            transform: `translate3d(${tx}%, 0, 0)`,
+            transition: dragging ? 'none' : 'transform 320ms ease',
           }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -119,54 +108,57 @@ export default function Carousel({
           {images.map((src, i) => (
             <div
               key={i}
-              className="h-full w-full shrink-0 grow-0 basis-full"
-              aria-hidden={i !== index}
+              className={`relative basis-full shrink-0 grow-0 ${aspectClass}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={src}
-                alt={`slide ${i + 1}`}
-                className="h-full w-full object-cover"
+                alt={`slide-${i + 1}`}
+                className="absolute inset-0 h-full w-full object-cover"
                 draggable={false}
               />
             </div>
           ))}
         </div>
-
-        {/* Šípky */}
-        <button
-          type="button"
-          aria-label="Predošlý"
-          onClick={prev}
-          disabled={!canPrev}
-          className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/40 px-3 py-2 text-white backdrop-blur disabled:opacity-30"
-        >
-          ‹
-        </button>
-        <button
-          type="button"
-          aria-label="Ďalší"
-          onClick={next}
-          disabled={!canNext}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/40 px-3 py-2 text-white backdrop-blur disabled:opacity-30"
-        >
-          ›
-        </button>
       </div>
 
-      {/* Bodky */}
-      <div className="mt-2 flex items-center justify-center gap-1.5">
-        {images.map((_, i) => (
+      {/* ŠÍPKY */}
+      {total > 1 && (
+        <>
           <button
-            key={i}
-            aria-label={`Prepnúť na ${i + 1}. snímku`}
-            onClick={() => setIndex(i)}
-            className={`h-2 w-2 rounded-full transition ${
-              i === index ? 'bg-neutral-900' : 'bg-neutral-300'
-            }`}
-          />
-        ))}
-      </div>
+            aria-label="Predchádzajúci"
+            onClick={goPrev}
+            disabled={index === 0}
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white disabled:opacity-40 hidden md:block"
+          >
+            ‹
+          </button>
+          <button
+            aria-label="Ďalší"
+            onClick={goNext}
+            disabled={index === total - 1}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white disabled:opacity-40 hidden md:block"
+          >
+            ›
+          </button>
+        </>
+      )}
+
+      {/* BODKY */}
+      {total > 1 && (
+        <div className="mt-2 flex justify-center gap-1.5">
+          {images.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIndex(i)}
+              aria-label={`Prejsť na ${i + 1}`}
+              className={`h-1.5 rounded-full transition-all ${
+                i === index ? 'w-6 bg-black/80' : 'w-2 bg-black/30'
+              }`}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

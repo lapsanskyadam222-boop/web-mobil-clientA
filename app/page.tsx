@@ -54,12 +54,12 @@ export default async function HomePage() {
       ) : null}
 
       {images.length > 0 && (
-  <Carousel
-    images={images}
-    aspectClass="aspect-[4/5]"               // pomer ako IG post (môžeš dať "aspect-square")
-    className="mx-auto w-full max-w-[min(92vw,900px)]" // jedna veľká fotka, rozumná max šírka
-  />
-)}
+        <Carousel
+          images={images}
+          aspectClass="aspect-[4/5]"
+          className="mx-auto w-full max-w-[min(92vw,900px)]"
+        />
+      )}
 
       {text ? (
         <article className="prose max-w-none text-base whitespace-pre-wrap">{text}</article>
