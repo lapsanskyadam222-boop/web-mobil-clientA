@@ -1,11 +1,11 @@
+// components/Carousel.tsx
 'use client';
 
 import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** Zvoľ si pomer strán podobný IG postu (4:5). Zmeň podľa potreby. */
-  aspectClass?: string; // napr. 'aspect-[4/5]' | 'aspect-square' | 'aspect-video'
+  aspectClass?: string;   // napr. 'aspect-[4/5]' (IG post), alebo 'aspect-video', 'aspect-square'
   className?: string;
 };
 
@@ -15,185 +15,158 @@ export default function Carousel({
   className = '',
 }: Props) {
   const [index, setIndex] = React.useState(0);
-  const [dragX, setDragX] = React.useState(0); // aktuálne ťahanie v px
+  const [dragX, setDragX] = React.useState(0);       // aktuálne ťahanie v px
   const [dragging, setDragging] = React.useState(false);
-  const startX = React.useRef(0);
-  const startY = React.useRef(0);
-  const lastX = React.useRef(0);
-  const startT = React.useRef(0);
-  const locked = React.useRef<null | 'x' | 'y'>(null);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
 
-  const total = images?.length ?? 0;
+  const trackRef = React.useRef<HTMLDivElement | null>(null);
+  const startXRef = React.useRef(0);
+  const lockedRef = React.useRef<'x' | 'y' | null>(null);
+
+  const total = images.length;
+  if (!total) return null;
+
   const canPrev = index > 0;
   const canNext = index < total - 1;
 
-  // Bez obrázkov neukazuj nič
-  if (!total) return null;
-
-  // --- helpery ---
-  const clampIndex = (i: number) => Math.max(0, Math.min(total - 1, i));
-
-  const goto = React.useCallback(
-    (i: number) => {
-      setIndex(clampIndex(i));
-      setDragX(0);
-      setDragging(false);
-      locked.current = null;
-    },
+  // --- Helpers -------------------------------------------------
+  const snapTo = React.useCallback(
+    (to: number) => setIndex(Math.max(0, Math.min(total - 1, to))),
     [total]
   );
 
-  // --- pointer events (touch + myš) jednotne ---
-  const onPointerDown = (e: React.PointerEvent) => {
-    // iba ľavé tlačidlo (alebo touch)
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  const prev = () => snapTo(index - 1);
+  const next = () => snapTo(index + 1);
 
-    startX.current = e.clientX;
-    startY.current = e.clientY;
-    lastX.current = e.clientX;
-    startT.current = performance.now();
-    locked.current = null;
+  // --- Pointer/Touch drag -------------------------------------
+  function onPointerDown(e: React.PointerEvent) {
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    startXRef.current = e.clientX;
     setDragging(true);
+    lockedRef.current = null;
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragging) return;
+
+    const dx = e.clientX - startXRef.current;
+
+    // lock smeru (x/y) po pár px, aby scroll na stránke neblokoval
+    if (!lockedRef.current) {
+      if (Math.abs(dx) > 6) lockedRef.current = 'x';
+    }
+    if (lockedRef.current !== 'x') return;
+
+    setDragX(dx);
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    const threshold = 60; // koľko px treba potiahnuť na zmenu slidu
+    if (dragX <= -threshold && canNext) {
+      next();
+    } else if (dragX >= threshold && canPrev) {
+      prev();
+    }
     setDragX(0);
-  };
+    setDragging(false);
+    lockedRef.current = null;
+  }
 
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragging) return;
-    const dx = e.clientX - startX.current;
-    const dy = e.clientY - startY.current;
-
-    // Rozlíš smer až keď je posun trochu väčší (aby si nechal normálne vert. scrollovať)
-    if (!locked.current) {
-      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-        locked.current = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      }
+  // --- Klávesy (ľavá/pravá) ----------------------------------
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowRight') next();
+      if (e.key === 'ArrowLeft') prev();
     }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [next, prev]);
 
-    // ak používateľ scrolluje vertikálne, nevstupujeme do toho
-    if (locked.current === 'y') return;
-
-    e.preventDefault(); // zablokuj horizontálny scroll stránky pri swipovaní
-    lastX.current = e.clientX;
-
-    // na začiatku/konci daj „guma“ efekt (menší posun)
-    const atEdge =
-      (index === 0 && dx > 0) || (index === total - 1 && dx < 0);
-    const softened = atEdge ? dx * 0.35 : dx;
-
-    setDragX(softened);
-  };
-
-  const onPointerUp = (_e: React.PointerEvent) => {
-    if (!dragging) return;
-    const dx = lastX.current - startX.current;
-    const dt = Math.max(1, performance.now() - startT.current);
-    const velocity = dx / dt; // px/ms (záporné doľava)
-
-    const threshold = 60; // koľko px stačí na preklik
-    const fast = Math.abs(velocity) > 0.5; // rýchly „flick“
-
-    let next = index;
-
-    if (locked.current !== 'y') {
-      if (dx <= -threshold || (fast && dx < 0)) {
-        // potiahol doľava -> ďalší
-        if (canNext) next = index + 1;
-      } else if (dx >= threshold || (fast && dx > 0)) {
-        // potiahol doprava -> predchádzajúci
-        if (canPrev) next = index - 1;
-      }
-    }
-
-    goto(next);
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      if (canPrev) goto(index - 1);
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      if (canNext) goto(index + 1);
-    }
-  };
-
-  // výpočet transformácie: aktuálny index + drag
-  const translate = `translateX(calc(${-index * 100}% + ${dragX}px))`;
-  const transition = dragging ? 'none' : 'transform 300ms cubic-bezier(.2,.8,.2,1)';
+  // --- ŠTÝLY A LAYOUT -----------------------------------------
+  // šírka „slajdu“ = 100% viewportu, track posúvame translateX
+  const baseTranslate = -index * 100; // v %
+  // dragX prepočítame na % podľa aktuálnej šírky track viewportu
+  const dragPercent = (() => {
+    const wrap = trackRef.current?.parentElement;
+    if (!wrap) return 0;
+    const w = wrap.clientWidth || 1;
+    return (dragX / w) * 100;
+  })();
 
   return (
-    <div
-      ref={containerRef}
-      className={`relative w-full select-none ${className}`}
-      onKeyDown={onKeyDown}
-      tabIndex={0}
+    <section
+      className={`w-full ${className}`.trim()}
       aria-roledescription="carousel"
-      aria-label="Galéria obrázkov"
     >
-      {/* zobrazenie 1 fotky v zvolenom pomere strán */}
+      {/* Viewport */}
       <div
-        className={`w-full ${aspectClass} overflow-hidden rounded-xl bg-neutral-100`}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        className={`relative w-full overflow-hidden rounded-xl bg-black/3 ${aspectClass}`}
       >
+        {/* Track (riadok so slajdmi) */}
         <div
-          className="h-full w-full flex"
+          ref={trackRef}
+          className="flex h-full w-full touch-pan-y select-none"
           style={{
-            transform: translate,
-            transition,
-            touchAction: 'pan-y', // necháme vertikálny scroll
+            transform: `translateX(calc(${baseTranslate}% + ${dragPercent}%))`,
+            transition: dragging ? 'none' : 'transform 300ms ease',
           }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onPointerLeave={endDrag}
         >
           {images.map((src, i) => (
-            <div key={i} className="shrink-0 basis-full">
+            <div
+              key={i}
+              className="h-full w-full shrink-0 grow-0 basis-full"
+              aria-hidden={i !== index}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={src}
-                alt={`obrázok ${i + 1} z ${total}`}
-                className="block h-full w-full object-cover pointer-events-none"
-                loading={i <= 1 ? 'eager' : 'lazy'}
+                alt={`slide ${i + 1}`}
+                className="h-full w-full object-cover"
                 draggable={false}
               />
             </div>
           ))}
         </div>
+
+        {/* Šípky */}
+        <button
+          type="button"
+          aria-label="Predošlý"
+          onClick={prev}
+          disabled={!canPrev}
+          className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/40 px-3 py-2 text-white backdrop-blur disabled:opacity-30"
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          aria-label="Ďalší"
+          onClick={next}
+          disabled={!canNext}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/40 px-3 py-2 text-white backdrop-blur disabled:opacity-30"
+        >
+          ›
+        </button>
       </div>
 
-      {/* šípky (desktop) */}
-      <button
-        type="button"
-        aria-label="Predchádzajúca fotka"
-        onClick={() => canPrev && goto(index - 1)}
-        disabled={!canPrev}
-        className="hidden sm:flex absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white disabled:opacity-30"
-      >
-        ‹
-      </button>
-      <button
-        type="button"
-        aria-label="Ďalšia fotka"
-        onClick={() => canNext && goto(index + 1)}
-        disabled={!canNext}
-        className="hidden sm:flex absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white disabled:opacity-30"
-      >
-        ›
-      </button>
-
-      {/* „instagramové“ bodky */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center gap-1">
+      {/* Bodky */}
+      <div className="mt-2 flex items-center justify-center gap-1.5">
         {images.map((_, i) => (
-          <span
+          <button
             key={i}
-            className={`h-1 w-1 rounded-full ${
-              i === index ? 'bg-white' : 'bg-white/50'
+            aria-label={`Prepnúť na ${i + 1}. snímku`}
+            onClick={() => setIndex(i)}
+            className={`h-2 w-2 rounded-full transition ${
+              i === index ? 'bg-neutral-900' : 'bg-neutral-300'
             }`}
           />
         ))}
       </div>
-    </div>
+    </section>
   );
 }
