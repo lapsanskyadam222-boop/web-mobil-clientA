@@ -2,23 +2,17 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import Carousel from '@/components/Carousel';
-import { SiteContent } from '@/lib/types';
-import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
+import Carousel from '../components/Carousel';
+import type { SiteContent } from '../lib/types';
+import { getBaseUrlServer } from '../lib/getBaseUrlServer';
 
-async function getContent(): Promise<{
-  ok: boolean;
-  data?: SiteContent;
-  error?: string;
-  status?: number;
-}> {
+async function getContent(): Promise<{ ok: boolean; data?: SiteContent; error?: string; status?: number }> {
   try {
     const base = getBaseUrlServer();
-    const url = `${base}/api/content`;
+    const url  = `${base}/api/content`;
 
     const res = await fetch(url, {
-      cache: 'no-store',            // vždy aktuálne
-      // next: { revalidate: 0 },    // už netreba, keď používame no-store
+      cache: 'no-store', // chceme okamžite aktuálne dáta
     });
 
     if (!res.ok) {
@@ -49,10 +43,10 @@ export default async function HomePage() {
     );
   }
 
-  const data = result.data!;
+  const data    = result.data!;
   const logoUrl = data.logoUrl ?? null;
-  const images = Array.isArray(data.carousel) ? data.carousel : [];
-  const text = data.text ?? '';
+  const images  = Array.isArray(data.carousel) ? data.carousel : [];
+  const text    = data.text ?? '';
 
   return (
     <main className="flex flex-col items-center gap-4 p-6">

@@ -3,20 +3,19 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getBaseUrlClient } from '@/lib/getBaseUrlClient';
+import { getBaseUrlClient } from '../../../lib/getBaseUrlClient';
 
 export default function AdminLoginPage() {
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail]           = useState('');
+  const [password, setPassword]     = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError]           = useState<string | null>(null);
   const router = useRouter();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-
     try {
       const base = getBaseUrlClient();
       const url  = `${base}/api/auth/login`;
@@ -32,7 +31,6 @@ export default function AdminLoginPage() {
         const text = await res.text().catch(() => '');
         setError(text || `Prihlásenie zlyhalo (HTTP ${res.status}).`);
       } else {
-        // API by malo nastaviť auth cookie; presmeruj na /admin
         router.replace('/admin');
       }
     } catch (err: any) {
