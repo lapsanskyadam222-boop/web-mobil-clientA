@@ -1,9 +1,10 @@
+// middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 import { SESSION_COOKIE } from '@/lib/auth';
 
-// Overenie JWT zo session cookie
+// --- Helper: verify session JWT ---
 async function verifySession(token: string | undefined) {
   if (!token) return false;
   const secret = process.env.AUTH_SECRET;
@@ -19,17 +20,25 @@ async function verifySession(token: string | undefined) {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Login stránka je verejná
+  // --- TVRDÁ POISTKA: verejné čítacie API nikdy neblokuj ---
+  if (pathname === '/api/content' || pathname.startsWith('/api/content/')) {
+    return NextResponse.next();
+  }
+
+  // Login je verejný
   if (pathname.startsWith('/admin/login')) {
     return NextResponse.next();
   }
 
-  // Overíme session pre chránené zóny
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const ok = await verifySession(token);
-
-  // Ak ide o API (save-content alebo blob) bez session → 401 JSON
-  if (pathname.startsWith('/api/save-content') || pathname.startsWith('/api/blob')) {
+  // Chránené API: /api/save-content a /api/blob
+  if (
+    pathname === '/api/save-content' ||
+    pathname.startsWith('/api/save-content/') ||
+    pathname === '/api/blob' ||
+    pathname.startsWith('/api/blob/')
+  ) {
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    const ok = await verifySession(token);
     if (!ok) {
       return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -39,8 +48,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Ak ide o admin stránku bez session → presmeruj na login
+  // Admin stránka bez session → redirect na login
   if (pathname.startsWith('/admin')) {
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    const ok = await verifySession(token);
     if (!ok) {
       return NextResponse.redirect(new URL('/admin/login', req.url));
     }
@@ -49,15 +60,13 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-/**
- * DÔLEŽITÉ: Middleware spúšťame len tam, kde ho naozaj potrebujeme.
- * Vôbec nespúšťame na /api/content (verejné API), takže SSR fetch nebude nikdy blokovaný.
- */
+// Matcher spúšťa middleware len tam, kde treba.
+// (Na /api/content sa nespustí vôbec.)
 export const config = {
   matcher: [
     '/admin/:path*',
     '/api/save-content/:path*',
     '/api/blob/:path*',
-    // NESPUŠŤAŤ na /api/content !
+    // zámerne NIK nie /api/content
   ],
 };
