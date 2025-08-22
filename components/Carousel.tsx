@@ -5,7 +5,7 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** napr. 'aspect-[4/5]' (IG post), 'aspect-square', 'aspect-video' */
+  /** IG pomer: 'aspect-[4/5]'. Dá sa zmeniť na 'aspect-square' alebo 'aspect-video'. */
   aspectClass?: string;
   className?: string;
 };
@@ -27,34 +27,34 @@ export default function Carousel({
   const total = images.length;
   if (total === 0) return null;
 
-  // meranie šírky viewportu
+  // vždy drž šírku viewportu, aby každý slide mal presne 100 % a bol viditeľný len jeden
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const measure = () => (widthRef.current = el.clientWidth || 1);
+    const measure = () => (widthRef.current = Math.max(1, el.clientWidth));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  // swipe handlers
-  const startDrag = (e: React.PointerEvent) => {
+  // ---- drag/swipe handlers
+  const beginDrag = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
+    lockRef.current = null;
     setDragging(true);
     setDragX(0);
-    lockRef.current = null;
   };
 
   const moveDrag = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
 
-    // lock smeru (neblokuj vertikálny scroll)
+    // uzamkni smer na X až keď je pohyb citeľný (neblokuj vert. scroll)
     if (!lockRef.current) {
-      if (Math.abs(dx) > 6) lockRef.current = 'x';
-      else return;
+      if (Math.abs(dx) < 6) return;
+      lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
       e.preventDefault();
@@ -68,8 +68,8 @@ export default function Carousel({
     const delta = dragX / w;
 
     let next = index;
-    if (delta <= -0.15 && index < total - 1) next = index + 1; // doľava -> ďalší
-    if (delta >= 0.15 && index > 0) next = index - 1;          // doprava -> späť
+    if (delta <= -0.15 && index < total - 1) next = index + 1; // doľava → ďalší
+    if (delta >= 0.15 && index > 0)        next = index - 1;   // doprava → späť
 
     setIndex(next);
     setDragX(0);
@@ -77,59 +77,55 @@ export default function Carousel({
     lockRef.current = null;
   };
 
-  const goPrev = () => setIndex((i) => Math.max(0, i - 1));
-  const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
+  const goPrev = () => setIndex(i => Math.max(0, i - 1));
+  const goNext = () => setIndex(i => Math.min(total - 1, i + 1));
 
-  // percentuálny posun trate
+  // posun trate v %
   const tx = -(index * 100) + (dragX / widthRef.current) * 100;
 
   return (
-    <section className={`relative w-full ${className}`}>
-      {/* VIEWPORT */}
+    <section className={`relative ${className}`}>
+      {/* VIEWPORT – práve toto zabezpečí, že je viditeľný vždy len jeden slide */}
       <div
         ref={wrapRef}
         className="relative w-full overflow-hidden rounded-2xl bg-black/5"
       >
         {/* TRACK */}
         <div
-          className="flex select-none"                // bez wrapu
+          className="flex touch-pan-y select-none"
           style={{
             transform: `translate3d(${tx}%, 0, 0)`,
-            transition: dragging ? 'none' : 'transform 320ms ease',
-            touchAction: 'pan-y',                     // povol vertikálne posúvanie
+            transition: dragging ? 'none' : 'transform 300ms ease',
           }}
-          onPointerDown={startDrag}
+          onPointerDown={beginDrag}
           onPointerMove={moveDrag}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onPointerLeave={endDrag}
         >
           {images.map((src, i) => (
-            <div
-              key={i}
-              // MIN‑WIDTH JE KĽÚČ – každý slide MUSÍ mať šírku viewportu
-              className={`relative shrink-0 grow-0 w-full min-w-full ${aspectClass}`}
-            >
+            <div key={i} className={`relative basis-full shrink-0 grow-0 ${aspectClass}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={src}
                 alt={`slide-${i + 1}`}
                 className="absolute inset-0 h-full w-full object-cover"
                 draggable={false}
+                loading={i === 0 ? 'eager' : 'lazy'}
               />
             </div>
           ))}
         </div>
       </div>
 
-      {/* ŠÍPKY (desktop) */}
+      {/* Šípky (desktop) */}
       {total > 1 && (
         <>
           <button
             aria-label="Predchádzajúci"
             onClick={goPrev}
             disabled={index === 0}
-            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white disabled:opacity-40 hidden md:block"
+            className="absolute left-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-black/50 p-2 text-white disabled:opacity-40 md:block"
           >
             ‹
           </button>
@@ -137,14 +133,14 @@ export default function Carousel({
             aria-label="Ďalší"
             onClick={goNext}
             disabled={index === total - 1}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white disabled:opacity-40 hidden md:block"
+            className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-black/50 p-2 text-white disabled:opacity-40 md:block"
           >
             ›
           </button>
         </>
       )}
 
-      {/* BODKY */}
+      {/* Bodky */}
       {total > 1 && (
         <div className="mt-2 flex justify-center gap-1.5">
           {images.map((_, i) => (
