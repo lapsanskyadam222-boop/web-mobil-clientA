@@ -18,72 +18,70 @@ export default function Carousel({
   const [index, setIndex] = React.useState(0);
   const [dragX, setDragX] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
+
   const startX = React.useRef(0);
   const widthRef = React.useRef(1);
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
-  const locked = React.useRef<'x' | 'y' | null>(null);
+  const lockRef = React.useRef<'x' | 'y' | null>(null);
 
   const total = images.length;
+  if (total === 0) return null;
 
+  // meranie šírky viewportu
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const resize = () => {
-      widthRef.current = el.clientWidth || 1;
-    };
-    resize();
-    const obs = new ResizeObserver(resize);
-    obs.observe(el);
-    return () => obs.disconnect();
+    const measure = () => (widthRef.current = el.clientWidth || 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
-  // --- pointer handlers ---
-  const onPointerDown = (e: React.PointerEvent) => {
+  // swipe handlers
+  const startDrag = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
-    locked.current = null;
     setDragging(true);
     setDragX(0);
+    lockRef.current = null;
   };
 
-  const onPointerMove = (e: React.PointerEvent) => {
+  const moveDrag = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
 
-    if (!locked.current) {
-      if (Math.abs(dx) > 6) locked.current = 'x';
+    // lock smeru (neblokuj vertikálny scroll)
+    if (!lockRef.current) {
+      if (Math.abs(dx) > 6) lockRef.current = 'x';
       else return;
     }
-    if (locked.current === 'x') {
+    if (lockRef.current === 'x') {
       e.preventDefault();
       setDragX(dx);
     }
   };
 
-  const onPointerUp = () => {
+  const endDrag = () => {
     if (!dragging) return;
     const w = widthRef.current;
     const delta = dragX / w;
 
     let next = index;
-    if (delta <= -0.15 && index < total - 1) next = index + 1;
-    if (delta >= 0.15 && index > 0) next = index - 1;
+    if (delta <= -0.15 && index < total - 1) next = index + 1; // doľava -> ďalší
+    if (delta >= 0.15 && index > 0) next = index - 1;          // doprava -> späť
 
     setIndex(next);
     setDragX(0);
     setDragging(false);
-    locked.current = null;
+    lockRef.current = null;
   };
-
-  // alias → použijeme v JSX
-  const endDrag = () => onPointerUp();
 
   const goPrev = () => setIndex((i) => Math.max(0, i - 1));
   const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
 
+  // percentuálny posun trate
   const tx = -(index * 100) + (dragX / widthRef.current) * 100;
-
-  if (total === 0) return null;
 
   return (
     <section className={`relative w-full ${className}`}>
@@ -94,13 +92,14 @@ export default function Carousel({
       >
         {/* TRACK */}
         <div
-          className="flex touch-pan-y select-none"
+          className="flex select-none"                // bez wrapu
           style={{
             transform: `translate3d(${tx}%, 0, 0)`,
             transition: dragging ? 'none' : 'transform 320ms ease',
+            touchAction: 'pan-y',                     // povol vertikálne posúvanie
           }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onPointerLeave={endDrag}
@@ -108,7 +107,8 @@ export default function Carousel({
           {images.map((src, i) => (
             <div
               key={i}
-              className={`relative basis-full shrink-0 grow-0 ${aspectClass}`}
+              // MIN‑WIDTH JE KĽÚČ – každý slide MUSÍ mať šírku viewportu
+              className={`relative shrink-0 grow-0 w-full min-w-full ${aspectClass}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -122,14 +122,14 @@ export default function Carousel({
         </div>
       </div>
 
-      {/* ŠÍPKY */}
+      {/* ŠÍPKY (desktop) */}
       {total > 1 && (
         <>
           <button
             aria-label="Predchádzajúci"
             onClick={goPrev}
             disabled={index === 0}
-            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white disabled:opacity-40 hidden md:block"
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white disabled:opacity-40 hidden md:block"
           >
             ‹
           </button>
@@ -137,7 +137,7 @@ export default function Carousel({
             aria-label="Ďalší"
             onClick={goNext}
             disabled={index === total - 1}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white disabled:opacity-40 hidden md:block"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white disabled:opacity-40 hidden md:block"
           >
             ›
           </button>
