@@ -1,6 +1,5 @@
 // app/page.tsx
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 import Carousel from '@/components/Carousel';
 import { SiteContent } from '@/lib/types';
@@ -10,20 +9,21 @@ async function getContent(): Promise<SiteContent | null> {
   const base = getBaseUrl();
   const url = `${base}/api/content`;
 
-  const res = await fetch(url, {
-    // nech sa nikdy neberie z keše
-    cache: 'no-store',
-    next: { revalidate: 0 },
-  });
-
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const res = await fetch(url, {
+      // vždy načítaj čerstvé dáta
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
 export default async function HomePage() {
   const data = await getContent();
 
-  // Ak by API z nejakého dôvodu vrátilo null/empty, ukážeme „debug“ info
   if (!data) {
     return (
       <main className="mx-auto max-w-2xl p-6">
@@ -41,12 +41,10 @@ export default async function HomePage() {
 
   return (
     <main className="flex flex-col items-center gap-4 p-6">
-      {logoUrl ? (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
-        </>
-      ) : null}
+      {logoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
+      )}
 
       {images.length > 0 && <Carousel images={images} />}
 
