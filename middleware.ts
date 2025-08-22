@@ -2,13 +2,16 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
-import { SESSION_COOKIE } from '@/lib/auth';
 
-// --- Helper: verify session JWT ---
-async function verifySession(token: string | undefined) {
-  if (!token) return false;
+// cookie názov máš už inde zadefinovaný – ak chceš, nechaj si ho tu napevno:
+const SESSION_COOKIE = 'session';
+
+const PROTECTED_PREFIXES = ['/admin', '/api/save-content', '/api/blob'];
+
+// Overenie JWT zo session cookie
+async function verifySession(token?: string) {
   const secret = process.env.AUTH_SECRET;
-  if (!secret) return false;
+  if (!token || !secret) return false;
   try {
     await jwtVerify(token, new TextEncoder().encode(secret));
     return true;
@@ -20,25 +23,28 @@ async function verifySession(token: string | undefined) {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // --- TVRDÁ POISTKA: verejné čítacie API nikdy neblokuj ---
-  if (pathname === '/api/content' || pathname.startsWith('/api/content/')) {
+  // Login stránky a login API vždy povoliť
+  if (pathname.startsWith('/admin/login') || pathname.startsWith('/api/auth/login')) {
     return NextResponse.next();
   }
 
-  // Login je verejný
-  if (pathname.startsWith('/admin/login')) {
+  // Verejný obsah – /api/content nikdy nechráň
+  if (pathname.startsWith('/api/content')) {
     return NextResponse.next();
   }
 
-  // Chránené API: /api/save-content a /api/blob
-  if (
-    pathname === '/api/save-content' ||
-    pathname.startsWith('/api/save-content/') ||
-    pathname === '/api/blob' ||
-    pathname.startsWith('/api/blob/')
-  ) {
-    const token = req.cookies.get(SESSION_COOKIE)?.value;
-    const ok = await verifySession(token);
+  // Zistíme, či je cesta chránená
+  const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+  if (!isProtected) {
+    return NextResponse.next();
+  }
+
+  // Overíme session iba pre chránené cesty
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const ok = await verifySession(token);
+
+  // API: vráť 401 JSON
+  if (pathname.startsWith('/api')) {
     if (!ok) {
       return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -48,25 +54,21 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Admin stránka bez session → redirect na login
-  if (pathname.startsWith('/admin')) {
-    const token = req.cookies.get(SESSION_COOKIE)?.value;
-    const ok = await verifySession(token);
-    if (!ok) {
-      return NextResponse.redirect(new URL('/admin/login', req.url));
-    }
+  // Stránky (/admin): presmeruj na login
+  if (!ok) {
+    return NextResponse.redirect(new URL('/admin/login', req.url));
   }
 
   return NextResponse.next();
 }
 
-// Matcher spúšťa middleware len tam, kde treba.
-// (Na /api/content sa nespustí vôbec.)
+// DÔLEŽITÉ: matcher len na chránené cesty.
+// /api/content sem úmyselne nedávame.
 export const config = {
   matcher: [
     '/admin/:path*',
+    '/api/save-content',
     '/api/save-content/:path*',
     '/api/blob/:path*',
-    // zámerne NIK nie /api/content
   ],
 };
