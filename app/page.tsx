@@ -6,7 +6,12 @@ import Carousel from '@/components/Carousel';
 import { SiteContent } from '@/lib/types';
 import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
 
-async function getContent(): Promise<{ ok: boolean; data?: SiteContent; error?: string; status?: number }> {
+async function getContent(): Promise<{
+  ok: boolean;
+  data?: SiteContent;
+  error?: string;
+  status?: number;
+}> {
   try {
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
@@ -25,11 +30,11 @@ export default async function HomePage() {
   if (!result.ok) {
     return (
       <main className="mx-auto max-w-2xl p-6">
-        <h1 className="text-xl font-semibold mb-2">Načítanie obsahu zlyhalo</h1>
-        <p className="text-sm opacity-70 mb-2">
+        <h1 className="mb-2 text-xl font-semibold">Načítanie obsahu zlyhalo</h1>
+        <p className="mb-2 text-sm opacity-70">
           API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
         </p>
-        <pre className="text-xs opacity-60 whitespace-pre-wrap">
+        <pre className="whitespace-pre-wrap text-xs opacity-60">
           {result.status ? `HTTP ${result.status}\n` : ''}
           {result.error ?? ''}
         </pre>
@@ -52,8 +57,8 @@ export default async function HomePage() {
       {images.length > 0 && (
         <Carousel
           images={images}
-          aspectClass="aspect-[4/5]"                          // ako IG post
-          className="mx-auto w-full max-w-[min(92vw,900px)]"  // jedna VEĽKÁ fotka
+          aspect="4 / 5"                                   // pomer strán (ako IG post)
+          className="mx-auto w-full max-w-[min(92vw,900px)]" // jedna VEĽKÁ fotka
         />
       )}
 

@@ -1,18 +1,17 @@
-// components/Carousel.tsx
 'use client';
 
 import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** IG pomer: 'aspect-[4/5]'. Dá sa zmeniť na 'aspect-square' alebo 'aspect-video'. */
-  aspectClass?: string;
+  /** Pomer strán pre každý slide. Default 4/5 (ako IG post). Príklad: "1 / 1", "16 / 9". */
+  aspect?: string;
   className?: string;
 };
 
 export default function Carousel({
   images,
-  aspectClass = 'aspect-[4/5]',
+  aspect = '4 / 5',
   className = '',
 }: Props) {
   const [index, setIndex] = React.useState(0);
@@ -27,7 +26,7 @@ export default function Carousel({
   const total = images.length;
   if (total === 0) return null;
 
-  // vždy drž šírku viewportu, aby každý slide mal presne 100 % a bol viditeľný len jeden
+  // Zmeraj šírku viewportu (pre výpočet drag percent)
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -38,7 +37,7 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
-  // ---- drag/swipe handlers
+  // Drag / swipe
   const beginDrag = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
@@ -51,9 +50,8 @@ export default function Carousel({
     if (!dragging) return;
     const dx = e.clientX - startX.current;
 
-    // uzamkni smer na X až keď je pohyb citeľný (neblokuj vert. scroll)
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return;
+      if (Math.abs(dx) < 6) return; // neblokuj vertikálny scroll
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -64,31 +62,27 @@ export default function Carousel({
 
   const endDrag = () => {
     if (!dragging) return;
-    const w = widthRef.current;
-    const delta = dragX / w;
-
+    const delta = dragX / widthRef.current;
     let next = index;
-    if (delta <= -0.15 && index < total - 1) next = index + 1; // doľava → ďalší
-    if (delta >= 0.15 && index > 0)        next = index - 1;   // doprava → späť
-
+    if (delta <= -0.15 && index < total - 1) next = index + 1;
+    if (delta >= 0.15 && index > 0)        next = index - 1;
     setIndex(next);
     setDragX(0);
     setDragging(false);
     lockRef.current = null;
   };
 
-  const goPrev = () => setIndex(i => Math.max(0, i - 1));
-  const goNext = () => setIndex(i => Math.min(total - 1, i + 1));
+  const goPrev = () => setIndex((i) => Math.max(0, i - 1));
+  const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
 
-  // posun trate v %
   const tx = -(index * 100) + (dragX / widthRef.current) * 100;
 
   return (
     <section className={`relative ${className}`}>
-      {/* VIEWPORT – práve toto zabezpečí, že je viditeľný vždy len jeden slide */}
+      {/* VIEWPORT – overflow-hidden: vždy len jeden slide */}
       <div
         ref={wrapRef}
-        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
+        className="relative w-full min-h-[1px] overflow-hidden rounded-2xl bg-black/5"
       >
         {/* TRACK */}
         <div
@@ -104,7 +98,11 @@ export default function Carousel({
           onPointerLeave={endDrag}
         >
           {images.map((src, i) => (
-            <div key={i} className={`relative basis-full shrink-0 grow-0 ${aspectClass}`}>
+            <div
+              key={i}
+              className="relative basis-full shrink-0 grow-0"
+              style={{ aspectRatio: aspect }} // ← garantovaná výška slide-u
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={src}
