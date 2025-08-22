@@ -10,12 +10,8 @@ async function getContent(): Promise<{ ok: boolean; data?: SiteContent; error?: 
   try {
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
-
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) {
-      return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
-    }
-
+    if (!res.ok) return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
   } catch (e: any) {
@@ -53,7 +49,13 @@ export default async function HomePage() {
         <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
       ) : null}
 
-      {images.length > 0 && <Carousel images={images} />}
+      {images.length > 0 && (
+        <Carousel
+          images={images}
+          aspectClass="aspect-[4/5]"                          // ako IG post
+          className="mx-auto w-full max-w-[min(92vw,900px)]"  // jedna VEĽKÁ fotka
+        />
+      )}
 
       {text ? (
         <article className="prose max-w-none text-base whitespace-pre-wrap">{text}</article>
