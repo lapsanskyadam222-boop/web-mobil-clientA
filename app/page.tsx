@@ -41,10 +41,12 @@ export default async function HomePage() {
 
   return (
     <main className="flex flex-col items-center gap-4 p-6">
-      {logoUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
-      )}
+      {logoUrl ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
+        </>
+      ) : null}
 
       {images.length > 0 && <Carousel images={images} />}
 
