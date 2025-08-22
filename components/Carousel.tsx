@@ -4,7 +4,7 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** Pomer strán pre každý slide. Default 4/5 (ako IG post). Príklad: "1 / 1", "16 / 9". */
+  /** Pomer strán každého slidu. Pr.: "4 / 5" (default), "1 / 1", "16 / 9" */
   aspect?: string;
   className?: string;
 };
@@ -23,15 +23,20 @@ export default function Carousel({
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const lockRef = React.useRef<'x' | 'y' | null>(null);
 
-  const total = images.length;
+  const total = Array.isArray(images) ? images.length : 0;
   if (total === 0) return null;
 
   // Zmeraj šírku viewportu (pre výpočet drag percent)
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const measure = () => (widthRef.current = Math.max(1, el.clientWidth));
+
+    const measure = () => {
+      // fallback, aby nebol nikdy 0
+      widthRef.current = Math.max(1, el.clientWidth || 0);
+    };
     measure();
+
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
@@ -62,7 +67,8 @@ export default function Carousel({
 
   const endDrag = () => {
     if (!dragging) return;
-    const delta = dragX / widthRef.current;
+    const w = Math.max(1, widthRef.current);
+    const delta = dragX / w;
     let next = index;
     if (delta <= -0.15 && index < total - 1) next = index + 1;
     if (delta >= 0.15 && index > 0)        next = index - 1;
@@ -75,14 +81,15 @@ export default function Carousel({
   const goPrev = () => setIndex((i) => Math.max(0, i - 1));
   const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
 
-  const tx = -(index * 100) + (dragX / widthRef.current) * 100;
+  const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
 
   return (
-    <section className={`relative ${className}`}>
-      {/* VIEWPORT – overflow-hidden: vždy len jeden slide */}
+    <section className={`relative w-full ${className}`}>
+      {/* VIEWPORT – overflow-hidden: vždy len jeden slide. Dočasná minHeight aby bolo hneď niečo vidno */}
       <div
         ref={wrapRef}
-        className="relative w-full min-h-[1px] overflow-hidden rounded-2xl bg-black/5"
+        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
+        style={{ minHeight: '40vh' }} /* TODO: keď bude všetko OK, môžeš vymazať */
       >
         {/* TRACK */}
         <div
@@ -90,6 +97,7 @@ export default function Carousel({
           style={{
             transform: `translate3d(${tx}%, 0, 0)`,
             transition: dragging ? 'none' : 'transform 300ms ease',
+            willChange: 'transform',
           }}
           onPointerDown={beginDrag}
           onPointerMove={moveDrag}
@@ -101,13 +109,13 @@ export default function Carousel({
             <div
               key={i}
               className="relative basis-full shrink-0 grow-0"
-              style={{ aspectRatio: aspect }} // ← garantovaná výška slide-u
+              style={{ aspectRatio: aspect }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={src}
                 alt={`slide-${i + 1}`}
-                className="absolute inset-0 h-full w-full object-cover"
+                className="absolute inset-0 block h-full w-full object-cover"
                 draggable={false}
                 loading={i === 0 ? 'eager' : 'lazy'}
               />

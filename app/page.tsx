@@ -16,7 +16,8 @@ async function getContent(): Promise<{
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
+    if (!res.ok)
+      return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
   } catch (e: any) {
@@ -54,11 +55,16 @@ export default async function HomePage() {
         <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
       ) : null}
 
+      {/* DEBUG badge – dočasne, nechajme zatiaľ */}
+      <div className="text-xs opacity-50">
+        images: <code>{JSON.stringify(images.slice(0, 2))} (len={images.length})</code>
+      </div>
+
       {images.length > 0 && (
         <Carousel
           images={images}
-          aspect="4 / 5"                                   // pomer strán (ako IG post)
-          className="mx-auto w-full max-w-[min(92vw,900px)]" // jedna VEĽKÁ fotka
+          aspect="4 / 5"                                  // IG post
+          className="mx-auto w-full max-w-[min(92vw,900px)]"
         />
       )}
 
