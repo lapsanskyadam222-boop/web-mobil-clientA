@@ -4,17 +4,10 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** Pomer strán (akceptuje "4/5", "4 / 5", "1/1", "16/9"…). Default 4/5. */
+  /** Pomer strán: napr. "4/5", "1/1", "16/9". Default "4/5". */
   aspect?: string;
   className?: string;
 };
-
-function aspectToPercent(aspect?: string) {
-  const raw = (aspect ?? '4/5').replace(/\s/g, '');
-  const [w, h] = raw.split('/').map((n) => Number(n));
-  if (!w || !h) return 125;        // fallback => 4/5 -> 125%
-  return (h / w) * 100;            // padding-top v %
-}
 
 export default function Carousel({
   images,
@@ -26,14 +19,15 @@ export default function Carousel({
   const [dragging, setDragging] = React.useState(false);
 
   const startX = React.useRef(0);
-  const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const widthRef = React.useRef(1);
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const lockRef = React.useRef<'x' | 'y' | null>(null);
 
-  const total = Array.isArray(images) ? images.length : 0;
+  const items = Array.isArray(images) ? images.filter(Boolean) : [];
+  const total = items.length;
   if (total === 0) return null;
 
-  // zmeraj šírku viewportu pre výpočet percent pri ťahaní
+  // zmeraj šírku viewportu (koľko pixelov predstavuje 100 % šírky jedného slidu)
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -45,18 +39,21 @@ export default function Carousel({
   }, []);
 
   // drag / swipe
-  const beginDrag = (e: React.PointerEvent) => {
+  const onPointerDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
     lockRef.current = null;
     setDragging(true);
     setDragX(0);
   };
-  const moveDrag = (e: React.PointerEvent) => {
+
+  const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
+
+    // nechytaj Y-scroll, kým nie je jasné, že sa hýbeme po X
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return;    // neblokuj vertikálny scroll
+      if (Math.abs(dx) < 6) return;
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -64,11 +61,12 @@ export default function Carousel({
       setDragX(dx);
     }
   };
-  const endDrag = () => {
+
+  const onPointerEnd = () => {
     if (!dragging) return;
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
-    if (delta <= -0.15 && index < total - 1) next = index + 1; // doľava -> ďalší
+    if (delta <= -0.15 && index < total - 1) next = index + 1; // posun doľava -> ďalší
     if (delta >= 0.15 && index > 0)        next = index - 1;   // doprava -> späť
     setIndex(next);
     setDragX(0);
@@ -76,51 +74,46 @@ export default function Carousel({
     lockRef.current = null;
   };
 
-  const goPrev = () => setIndex((i) => Math.max(0, i - 1));
-  const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
+  const goPrev = () => setIndex(i => Math.max(0, i - 1));
+  const goNext = () => setIndex(i => Math.min(total - 1, i + 1));
 
   const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
-  const padTop = aspectToPercent(aspect);  // napr. 125 pre 4/5
 
   return (
-    <section className={`relative w-full ${className}`}>
-      {/* VIEWPORT – vždy ukáže len jeden slide */}
+    <section className={`relative ${className}`}>
+      {/* VIEWPORT: zobrazuje vždy len jeden slide */}
       <div
         ref={wrapRef}
-        className="relative w-full overflow-hidden rounded-2xl bg-black/5 min-h-[120px]"
+        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
       >
-        {/* TRACK: dôležité je w-full a aby každý slide mal min-w-full */}
+        {/* TRACK: všetky slidy vedľa seba */}
         <div
-          className="flex w-full touch-pan-y select-none"
+          className="flex touch-pan-y select-none"
           style={{
             transform: `translate3d(${tx}%, 0, 0)`,
             transition: dragging ? 'none' : 'transform 300ms ease',
             willChange: 'transform',
           }}
-          onPointerDown={beginDrag}
-          onPointerMove={moveDrag}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onPointerLeave={endDrag}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerEnd}
+          onPointerCancel={onPointerEnd}
+          onPointerLeave={onPointerEnd}
         >
-          {images.map((src, i) => (
+          {items.map((src, i) => (
             <div
               key={i}
-              className="relative min-w-full shrink-0 overflow-hidden"
+              className="relative basis-full shrink-0 grow-0"
+              style={{ aspectRatio: aspect, minHeight: 180 }} // výška držaná pomerom + bezpečné minimum
             >
-              {/* RATIO BOX – drží výšku podľa pomeru strán */}
-              <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
-              {/* OBSAH */}
-              <div className="absolute inset-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={src}
-                  alt={`slide-${i + 1}`}
-                  className="h-full w-full object-cover"
-                  draggable={false}
-                  loading={i === 0 ? 'eager' : 'lazy'}
-                />
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={`slide-${i + 1}`}
+                className="absolute inset-0 h-full w-full object-cover"
+                draggable={false}
+                loading={i === 0 ? 'eager' : 'lazy'}
+              />
             </div>
           ))}
         </div>
@@ -148,10 +141,10 @@ export default function Carousel({
         </>
       )}
 
-      {/* BODKY */}
+      {/* Bodky */}
       {total > 1 && (
         <div className="mt-2 flex justify-center gap-1.5">
-          {images.map((_, i) => (
+          {items.map((_, i) => (
             <button
               key={i}
               onClick={() => setIndex(i)}
