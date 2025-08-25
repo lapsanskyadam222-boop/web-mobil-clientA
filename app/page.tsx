@@ -1,4 +1,3 @@
-// app/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -58,36 +57,18 @@ export default async function HomePage() {
 
   return (
     <main className="flex flex-col items-center p-6">
-      {/* Globálne premenné pre logo a medzery */}
-      <style jsx global>{`
-        :root {
-          /* Logo výška sa plynule mení podľa šírky obrazovky */
-          --logoH: clamp(68px, 12vw, 150px);
-          /* Medzery hore/dole = 27 % výšky loga (menšie o 10 %) */
-          --logoGap: calc(var(--logoH) * 0.27);
-        }
-        @media (min-width: 768px) {
-          :root {
-            /* Na väčších displejoch trochu väčšie logo a vyšší strop */
-            --logoH: clamp(90px, 9vw, 170px);
-            --logoGap: calc(var(--logoH) * 0.27);
-          }
-        }
-      `}</style>
-
       {/* LOGO */}
       {logoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={logoUrl}
           alt="logo"
-          className="mx-auto w-auto select-none"
+          className="mx-auto w-auto"
           style={{
             height: 'var(--logoH)',
             marginTop: 'var(--logoGap)',
             marginBottom: 'var(--logoGap)',
           }}
-          draggable={false}
         />
       )}
 
@@ -95,7 +76,7 @@ export default async function HomePage() {
       {images.length > 0 && (
         <Carousel
           images={images}
-          aspect="4/5"
+          aspect="4/5" // ako IG post
           className="mx-auto w-full max-w-[min(92vw,900px)]"
         />
       )}
