@@ -54,7 +54,7 @@ export default async function HomePage() {
   return (
     <main className="min-h-dvh bg-white text-gray-900 antialiased">
       <div className="mx-auto max-w-screen-sm p-4 flex flex-col items-center gap-4">
-        {/* LOGO – väčšie a responzívne */}
+        {/* LOGO */}
         {logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -65,16 +65,18 @@ export default async function HomePage() {
           />
         )}
 
-        {/* CAROUSEL – jedna fotka na šírku, pekne zaoblený „rámik“ */}
+        {/* CAROUSEL – centrovaný na stred */}
         {images.length > 0 && (
-          <div className="mx-auto w-full" style={{ width: 'min(92vw, 900px)' }}>
-            <Carousel images={images} aspect="4/5" className="w-full" />
+          <div className="w-full flex justify-center">
+            <div className="w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
+              <Carousel images={images} aspect="4/5" className="w-full" />
+            </div>
           </div>
         )}
 
         {/* TEXT */}
         {text ? (
-          <article className="prose" style={{ textAlign: 'center', maxWidth: 'min(92vw, 900px)' }}>
+          <article className="prose text-center" style={{ maxWidth: 'min(92vw, 900px)' }}>
             {text}
           </article>
         ) : (
