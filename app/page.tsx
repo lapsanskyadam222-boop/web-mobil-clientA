@@ -58,28 +58,44 @@ export default async function HomePage() {
 
   return (
     <main className="flex flex-col items-center p-6">
+      {/* Globálne premenné pre logo a medzery */}
+      <style jsx global>{`
+        :root {
+          /* Logo výška sa plynule mení podľa šírky obrazovky */
+          --logoH: clamp(68px, 12vw, 150px);
+          /* Medzery hore/dole = 27 % výšky loga (menšie o 10 %) */
+          --logoGap: calc(var(--logoH) * 0.27);
+        }
+        @media (min-width: 768px) {
+          :root {
+            /* Na väčších displejoch trochu väčšie logo a vyšší strop */
+            --logoH: clamp(90px, 9vw, 170px);
+            --logoGap: calc(var(--logoH) * 0.27);
+          }
+        }
+      `}</style>
+
       {/* LOGO */}
       {logoUrl && (
-        <div className="flex flex-col items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={logoUrl}
-            alt="logo"
-            className="mx-auto w-auto"
-            style={{
-              height: 'calc(1.21 * 4rem)', // pôvodne h-16 = 4rem -> +21%
-              marginTop: 'calc(0.3 * 1.21 * 4rem)', // 30% výšky loga hore
-              marginBottom: 'calc(0.3 * 1.21 * 4rem)', // 30% výšky loga dole
-            }}
-          />
-        </div>
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt="logo"
+          className="mx-auto w-auto select-none"
+          style={{
+            height: 'var(--logoH)',
+            marginTop: 'var(--logoGap)',
+            marginBottom: 'var(--logoGap)',
+          }}
+          draggable={false}
+        />
       )}
 
       {/* CAROUSEL */}
       {images.length > 0 && (
         <Carousel
           images={images}
-          aspect="4/5" // pomer ako IG
+          aspect="4/5"
           className="mx-auto w-full max-w-[min(92vw,900px)]"
         />
       )}
