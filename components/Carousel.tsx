@@ -4,19 +4,16 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** Pomer strán, napr. '4/5', '1/1', '16/9'. Default '4/5'. */
+  /** Pomer strán – napr. '4/5', '1/1', '16/9'. */
   aspect?: string;
   className?: string;
 };
 
-function aspectToPercent(aspect?: string) {
-  const raw = (aspect ?? '4/5').replace(/\s/g, '');
-  const [w, h] = raw.split('/').map(Number);
-  if (!w || !h) return 125; // fallback pre 4/5
-  return (h / w) * 100;
-}
-
-export default function Carousel({ images, aspect = '4/5', className = '' }: Props) {
+export default function Carousel({
+  images,
+  aspect = '4/5',
+  className = '',
+}: Props) {
   const total = Array.isArray(images) ? images.length : 0;
   if (total === 0) return null;
 
@@ -29,7 +26,7 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
   const widthRef = React.useRef(1);
   const lockRef = React.useRef<'x' | 'y' | null>(null);
 
-  // zmeranie šírky viewportu
+  // zmeraj šírku viewportu pre prepočet drag -> %
   React.useEffect(() => {
     const el = viewRef.current;
     if (!el) return;
@@ -40,21 +37,20 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
     return () => ro.disconnect();
   }, []);
 
-  // pointer handlers
-  const onPointerDown = (e: React.PointerEvent) => {
+  // drag/swipe handlers
+  const onDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
     lockRef.current = null;
     setDragging(true);
     setDragX(0);
   };
-
-  const onPointerMove = (e: React.PointerEvent) => {
+  const onMove = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
 
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return; // nezamykaj hneď, nech ide zvislý scroll
+      if (Math.abs(dx) < 6) return; // nechaj vertikálny scroll
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -62,16 +58,12 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
       setDragX(dx);
     }
   };
-
-  const onPointerEnd = () => {
+  const onEnd = () => {
     if (!dragging) return;
-    const w = Math.max(1, widthRef.current);
-    const delta = dragX / w;
-
+    const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
-    if (delta <= -0.15 && index < total - 1) next = index + 1; // potiahni doľava -> ďalší
-    if (delta >= 0.15 && index > 0)        next = index - 1;   // potiahni doprava -> späť
-
+    if (delta <= -0.15 && index < total - 1) next = index + 1;
+    if (delta >=  0.15 && index > 0)        next = index - 1;
     setIndex(next);
     setDragX(0);
     setDragging(false);
@@ -81,43 +73,46 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
   const goPrev = () => setIndex((i) => Math.max(0, i - 1));
   const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
 
-  const padTop = aspectToPercent(aspect);
-  const currentSrc = images[index];
+  // posun trate v % (1 slide = 100%)
+  const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
 
   return (
     <section className={`relative w-full ${className}`}>
-      {/* VIEWPORT – vždy zobrazí iba 1 slide */}
+      {/* VIEWPORT – nikdy neukáže viac ako 1 slide */}
       <div
         ref={viewRef}
-        className="relative w-full overflow-visible"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerEnd}
-        onPointerCancel={onPointerEnd}
-        onPointerLeave={onPointerEnd}
+        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onEnd}
+        onPointerCancel={onEnd}
+        onPointerLeave={onEnd}
       >
-        {/* Ratio box drží výšku podľa pomeru strán */}
-        <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
-
-        {/* Absolútne vrstvený obsah v rámci vlastného RELATÍVNEHO kontajnera,
-            aby nič nepretieklo a neprekrývalo prvky pod karuselom */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div
-            className="h-full w-full will-change-transform"
-            style={{
-              transform: `translate3d(${dragX}px, 0, 0)`,
-              transition: dragging ? 'none' : 'transform 220ms ease',
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={currentSrc}
-              alt={`slide-${index + 1}`}
-              className="h-full w-full object-cover block"
-              draggable={false}
-              loading="eager"
-            />
-          </div>
+        {/* TRACK */}
+        <div
+          className="flex select-none touch-pan-y will-change-transform"
+          style={{
+            transform: `translate3d(${tx}%, 0, 0)`,
+            transition: dragging ? 'none' : 'transform 280ms ease',
+            width: '100%',
+          }}
+        >
+          {images.map((src, i) => (
+            <div
+              key={i}
+              className="basis-full shrink-0 grow-0"
+              style={{ aspectRatio: aspect }}   // <— drží stabilnú výšku
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={`slide-${i + 1}`}
+                className="h-full w-full object-cover block"
+                draggable={false}
+                loading={i === 0 ? 'eager' : 'lazy'}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
