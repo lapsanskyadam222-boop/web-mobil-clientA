@@ -56,7 +56,7 @@ export default async function HomePage() {
   const text = data.text ?? '';
 
   return (
-    <main className="flex flex-col items-center gap-6 p-6">
+    <main className="flex flex-col items-center p-6">
       {/* LOGO */}
       {logoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -66,8 +66,8 @@ export default async function HomePage() {
           className="mx-auto w-auto"
           style={{
             height: "var(--logoH)",
-            marginTop: "var(--logoGap)",
-            marginBottom: "var(--logoGap)",
+            marginTop: "var(--logoGapTop)",
+            marginBottom: "var(--logoGapBottom)",
           }}
         />
       )}
@@ -76,7 +76,7 @@ export default async function HomePage() {
       {images.length > 0 && (
         <Carousel
           images={images}
-          aspect="4/5"
+          aspect="4/5" // pomer strán ako IG post
           className="mx-auto w-full max-w-[min(92vw,900px)]"
         />
       )}

@@ -1,16 +1,19 @@
 :root {
-  --logoH: clamp(64px, 12vh, 120px);   /* základná výška loga (PC/tablet) */
-  --logoGap: calc(var(--logoH) * 0.3); /* medzery hore aj dole = 30 % výšky loga */
+  --logoH: clamp(64px, 12vh, 120px);          /* základná výška loga (PC/tablet) */
+  --logoGapBottom: calc(var(--logoH) * 0.3);  /* spodná medzera = 30 % výšky loga */
+  --logoGapTop: calc(var(--logoGapBottom) * 0.66); /* horná medzera = 2/3 spodnej */
 }
 
 /* 📱 Mobilné zariadenia */
 @media (max-width: 768px) {
   :root {
-    --logoH: clamp(70px, 13.2vh, 132px);  /* +10% oproti PC */
-    --logoGap: calc(var(--logoH) * 0.3);  /* rovnaká medzera hore aj dole */
+    --logoH: clamp(70px, 13.2vh, 132px);      /* +10 % oproti PC */
+    --logoGapBottom: calc(var(--logoH) * 0.3);
+    --logoGapTop: calc(var(--logoGapBottom) * 0.66);
   }
 }
 
+:root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
 .mx-auto { margin-left: auto; margin-right: auto; }
