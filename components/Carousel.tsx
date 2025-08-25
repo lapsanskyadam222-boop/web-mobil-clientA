@@ -27,6 +27,7 @@ export default function Carousel({
   const total = items.length;
   if (total === 0) return null;
 
+  // zmeraj šírku viewportu pre výpočet percent pri ťahaní
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -37,6 +38,17 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
+  // počas ťahania vypni skrolovanie celej stránky (poistka pre mobily)
+  React.useEffect(() => {
+    if (!dragging) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [dragging]);
+
+  // drag / swipe
   const onPointerDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
@@ -48,11 +60,13 @@ export default function Carousel({
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
+
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return;
+      if (Math.abs(dx) < 6) return; // neblokuj zvislý scroll pri malom pohybe
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
+      // dôležité pre iOS/Safari: funguje len ak má element touch-action != auto
       e.preventDefault();
       setDragX(dx);
     }
@@ -77,14 +91,14 @@ export default function Carousel({
 
   return (
     <section className={`relative ${className}`}>
-      {/* VIEWPORT: vždy len jeden slide */}
+      {/* VIEWPORT: ukáže vždy len jeden slide */}
       <div
         ref={wrapRef}
-        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
+        className="relative w-full overflow-hidden rounded-2xl bg-black/5 touch-pan-y"
       >
         {/* TRACK */}
         <div
-          className="flex touch-pan-y select-none"
+          className="flex select-none touch-none" /* touch-none = touch-action:none */
           style={{
             transform: `translate3d(${tx}%, 0, 0)`,
             transition: dragging ? 'none' : 'transform 300ms ease',
@@ -101,10 +115,10 @@ export default function Carousel({
               key={i}
               className="relative overflow-hidden"
               style={{
-                /* TOTO JE DÔLEŽITÉ: presne 100% šírky viewportu */
+                /* presne 100% šírky viewportu */
                 flex: '0 0 100%',
                 width: '100%',
-                /* výška držaná pomerom strán + rozumné minimum */
+                /* výška podľa pomeru strán + rozumné minimum */
                 aspectRatio: aspect,
                 minHeight: 180,
               }}
