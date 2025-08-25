@@ -1,13 +1,18 @@
-:root { 
-  color-scheme: light; 
+:root {
+  --logoH: clamp(64px, 12vh, 120px);   /* základná výška loga (PC/tablet) */
+  --logoGap: calc(var(--logoH) * 0.3); /* medzery hore aj dole = 30 % výšky loga */
 }
-* { 
-  box-sizing: border-box; 
+
+/* 📱 Mobilné zariadenia */
+@media (max-width: 768px) {
+  :root {
+    --logoH: clamp(70px, 13.2vh, 132px);  /* +10% oproti PC */
+    --logoGap: calc(var(--logoH) * 0.3);  /* rovnaká medzera hore aj dole */
+  }
 }
-body { 
-  margin: 0; 
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; 
-}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
 .mx-auto { margin-left: auto; margin-right: auto; }
 .max-w-screen-sm { max-width: 640px; }
 .p-4 { padding: 1rem; }
@@ -51,17 +56,3 @@ body {
 .min-w-0 { min-width: 0; }
 .object-contain { object-fit: contain; }
 .mt-2 { margin-top: .5rem; }
-
-/* === Responsive logo variables (global) === */
-:root {
-  /* logo +10% väčšie, gap o ~10% menší = 27% výšky loga */
-  --logoH: clamp(68px, 12vw, 150px);
-  --logoGap: calc(var(--logoH) * 0.27);
-}
-
-@media (min-width: 768px) {
-  :root {
-    --logoH: clamp(90px, 9vw, 170px);
-    --logoGap: calc(var(--logoH) * 0.27);
-  }
-}
