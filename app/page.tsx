@@ -67,9 +67,9 @@ export default async function HomePage() {
             alt="logo"
             className="mx-auto w-auto"
             style={{
-              height: 'calc(1.1 * 4rem)', // pôvodne h-16 = 4rem -> +10%
-              marginTop: 'calc(0.4 * 1.1 * 4rem)', // 40% výšky loga hore
-              marginBottom: 'calc(0.4 * 1.1 * 4rem)', // 40% výšky loga dole
+              height: 'calc(1.21 * 4rem)', // pôvodne h-16 = 4rem -> +21%
+              marginTop: 'calc(0.3 * 1.21 * 4rem)', // 30% výšky loga hore
+              marginBottom: 'calc(0.3 * 1.21 * 4rem)', // 30% výšky loga dole
             }}
           />
         </div>
