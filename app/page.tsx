@@ -31,12 +31,9 @@ export default async function HomePage() {
 
   if (!result.ok) {
     return (
-      <main className="min-h-dvh bg-white text-gray-900 antialiased mx-auto max-w-screen-sm p-4">
+      <main className="mx-auto max-w-screen-sm p-4">
         <h1 className="text-xl font-semibold mb-4">Načítanie obsahu zlyhalo</h1>
-        <p className="text-sm mb-4">
-          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
-        </p>
-        <pre className="text-sm border rounded p-4">{result.status ? `HTTP ${result.status}\n` : ''}{result.error ?? ''}</pre>
+        <pre className="text-sm">{result.status ? `HTTP ${result.status}\n` : ''}{result.error ?? ''}</pre>
       </main>
     );
   }
@@ -47,33 +44,52 @@ export default async function HomePage() {
   const text = data.text ?? '';
 
   return (
-    <main className="min-h-dvh bg-white text-gray-900 antialiased flex flex-col items-center gap-4 p-4">
-      {/* LOGO */}
+    <main
+      className="min-h-dvh bg-white text-gray-900 antialiased"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '16px',
+        padding: '16px',
+      }}
+    >
+      {/* LOGO – škálovanie clampom, vycentrované */}
       {logoUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={logoUrl}
           alt="logo"
           className="mx-auto w-auto"
-          /* responzívna výška loga – väčšie na mobile, stále centrované */
-          style={{ height: 'clamp(88px, 14vw, 140px)' }}
+          style={{
+            height: 'clamp(56px, 12vw, 92px)', // pekné responsívne škálovanie
+            display: 'block',
+          }}
         />
       )}
 
-      {/* CAROUSEL – šírka sa prispôsobí obrazovke, výška drží pomer 4/5 */}
+      {/* CAROUSEL – max šírka 900px, inak 92vw; vždy zaberie celú šírku tohto kontajnera */}
       {images.length > 0 && (
-        <div className="mx-auto w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
+        <div
+          className="mx-auto w-full"
+          style={{ width: 'min(92vw, 900px)' }}
+        >
           <Carousel
             images={images}
-            aspect="4/5"
-            className="w-full"
+            aspect="4/5"       // ako IG post; pokojne zmeň na "1/1" alebo "16/9"
+            className="w-full" // nechávame len pre prípad ďalšieho štýlovania
           />
         </div>
       )}
 
       {/* TEXT */}
       {text ? (
-        <article className="prose mx-auto max-w-screen-sm" style={{ textAlign: 'center' }}>
+        <article
+          className="prose"
+          style={{
+            textAlign: 'center',
+            maxWidth: 'min(92vw, 900px)',
+          }}
+        >
           {text}
         </article>
       ) : (
