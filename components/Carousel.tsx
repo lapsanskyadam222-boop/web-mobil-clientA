@@ -4,21 +4,25 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** Pomer strán – akceptuje "4 / 5" alebo "4/5". Default 4/5 (ako IG post). */
+  /** Pomer strán – akceptuje "4/5", "4 / 5", "1/1", "16/9"…  Default: "4/5". */
   aspect?: string;
   className?: string;
 };
 
-function aspectToPercent(aspect: string | undefined) {
-  const raw = (aspect ?? '4 / 5').replace(/\s/g, '');
-  const [w, h] = raw.split('/').map((n) => Number(n));
-  if (!w || !h) return 125;          // fallback = 4/5 -> 125%
-  return (h / w) * 100;              // padding-top v %
+/** Spoľahlivo prepočíta aspekt na percentá (padding-top) pre ratio box. */
+function aspectToPercent(aspect?: string) {
+  // odstránime medzery: "4 / 5" -> "4/5"
+  const raw = (aspect ?? '4/5').replace(/\s/g, '');
+  const [wStr, hStr] = raw.split('/');
+  const w = Number(wStr);
+  const h = Number(hStr);
+  if (!w || !h) return 125; // fallback (4/5 => 125%)
+  return (h / w) * 100;
 }
 
 export default function Carousel({
   images,
-  aspect = '4 / 5',
+  aspect = '4/5',
   className = '',
 }: Props) {
   const [index, setIndex] = React.useState(0);
@@ -33,7 +37,12 @@ export default function Carousel({
   const total = Array.isArray(images) ? images.length : 0;
   if (total === 0) return null;
 
-  // šírka viewportu na prepočet drag percent
+  // ak sa zmení zoznam obrázkov (napr. adminom), drž index v rozsahu
+  React.useEffect(() => {
+    setIndex((i) => Math.min(Math.max(i, 0), Math.max(total - 1, 0)));
+  }, [total]);
+
+  // zmeraj šírku viewportu pre výpočet percent pri ťahaní
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -44,7 +53,7 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
-  // drag
+  // drag / swipe
   const beginDrag = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
@@ -52,11 +61,13 @@ export default function Carousel({
     setDragging(true);
     setDragX(0);
   };
+
   const moveDrag = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
+
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return;
+      if (Math.abs(dx) < 6) return; // neblokuj vertikálny scroll
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -64,12 +75,13 @@ export default function Carousel({
       setDragX(dx);
     }
   };
+
   const endDrag = () => {
     if (!dragging) return;
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
-    if (delta <= -0.15 && index < total - 1) next = index + 1;
-    if (delta >= 0.15 && index > 0)        next = index - 1;
+    if (delta <= -0.15 && index < total - 1) next = index + 1; // doľava -> ďalší
+    if (delta >= 0.15 && index > 0)        next = index - 1;   // doprava -> späť
     setIndex(next);
     setDragX(0);
     setDragging(false);
@@ -80,14 +92,14 @@ export default function Carousel({
   const goNext = () => setIndex((i) => Math.min(total - 1, i + 1));
 
   const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
-  const padTop = aspectToPercent(aspect); // napr. 125 pre 4/5
+  const padTop = React.useMemo(() => aspectToPercent(aspect), [aspect]); // napr. 125 pre 4/5
 
   return (
-    <section className={`relative w-full ${className}`}>
-      {/* VIEWPORT */}
+    <section className={`relative w-full ${className}`} aria-roledescription="carousel">
+      {/* VIEWPORT – vždy ukáže len jeden slide */}
       <div
         ref={wrapRef}
-        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
+        className="relative w-full overflow-hidden rounded-2xl bg-black/5 min-h-[120px]"
       >
         {/* TRACK */}
         <div
@@ -104,10 +116,10 @@ export default function Carousel({
           onPointerLeave={endDrag}
         >
           {images.map((src, i) => (
-            <div key={i} className="relative basis-full shrink-0 grow-0">
-              {/* PADDING-BOX – drží pomer strán nezávisle od podpory aspect-ratio */}
-              <div style={{ paddingTop: `${padTop}%` }} />
-              {/* OBSAH S NAPEVNO ROZMERMI */}
+            <div key={i} className="relative basis-full shrink-0 grow-0 overflow-hidden">
+              {/* RATIO BOX – drží výšku podľa pomeru strán */}
+              <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
+              {/* OBSAH */}
               <div className="absolute inset-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -123,7 +135,7 @@ export default function Carousel({
         </div>
       </div>
 
-      {/* šípky (desktop) */}
+      {/* ŠÍPKY (desktop) */}
       {total > 1 && (
         <>
           <button
@@ -145,7 +157,7 @@ export default function Carousel({
         </>
       )}
 
-      {/* bodky */}
+      {/* BODKY */}
       {total > 1 && (
         <div className="mt-2 flex justify-center gap-1.5">
           {images.map((_, i) => (

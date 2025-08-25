@@ -15,7 +15,6 @@ async function getContent(): Promise<{
   try {
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
-
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
       return {
@@ -24,7 +23,6 @@ async function getContent(): Promise<{
         error: `Fetch ${url} failed with ${res.status}`,
       };
     }
-
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
   } catch (e: any) {
@@ -61,18 +59,14 @@ export default async function HomePage() {
       {/* LOGO */}
       {logoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={logoUrl}
-          alt="logo"
-          className="mx-auto h-16 w-auto"
-        />
+        <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
       )}
 
       {/* CAROUSEL */}
       {images.length > 0 && (
         <Carousel
           images={images}
-          aspect="4/5" // môžeš zmeniť na "1/1", "16/9"…
+          aspect="4/5"                                 // IG pomer; môžeš zmeniť na "1/1", "16/9"…
           className="mx-auto w-full max-w-[min(92vw,900px)]"
         />
       )}
