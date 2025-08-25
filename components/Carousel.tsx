@@ -89,7 +89,7 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
       {/* VIEWPORT – vždy zobrazí iba 1 slide */}
       <div
         ref={viewRef}
-        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
+        className="relative w-full overflow-visible"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
@@ -99,22 +99,25 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
         {/* Ratio box drží výšku podľa pomeru strán */}
         <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
 
-        {/* Aktuálny obrázok – počas ťahania jemne posúvame */}
-        <div
-          className="absolute inset-0 will-change-transform"
-          style={{
-            transform: `translate3d(${dragX}px, 0, 0)`,
-            transition: dragging ? 'none' : 'transform 220ms ease',
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={currentSrc}
-            alt={`slide-${index + 1}`}
-            className="h-full w-full object-cover"
-            draggable={false}
-            loading="eager"
-          />
+        {/* Absolútne vrstvený obsah v rámci vlastného RELATÍVNEHO kontajnera,
+            aby nič nepretieklo a neprekrývalo prvky pod karuselom */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div
+            className="h-full w-full will-change-transform"
+            style={{
+              transform: `translate3d(${dragX}px, 0, 0)`,
+              transition: dragging ? 'none' : 'transform 220ms ease',
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={currentSrc}
+              alt={`slide-${index + 1}`}
+              className="h-full w-full object-cover block"
+              draggable={false}
+              loading="eager"
+            />
+          </div>
         </div>
       </div>
 
