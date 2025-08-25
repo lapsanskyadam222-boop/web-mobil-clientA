@@ -15,10 +15,12 @@ async function getContent(): Promise<{
   try {
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
+
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
       return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
     }
+
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
   } catch (e: any) {
@@ -31,9 +33,15 @@ export default async function HomePage() {
 
   if (!result.ok) {
     return (
-      <main className="mx-auto max-w-screen-sm p-4">
-        <h1 className="text-xl font-semibold mb-4">Načítanie obsahu zlyhalo</h1>
-        <pre className="text-sm">{result.status ? `HTTP ${result.status}\n` : ''}{result.error ?? ''}</pre>
+      <main className="mx-auto max-w-2xl p-6">
+        <h1 className="mb-2 text-xl font-semibold">Načítanie obsahu zlyhalo</h1>
+        <p className="mb-2 text-sm opacity-70">
+          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
+        </p>
+        <pre className="whitespace-pre-wrap text-xs opacity-60">
+          {result.status ? `HTTP ${result.status}\n` : ''}
+          {result.error ?? ''}
+        </pre>
       </main>
     );
   }
@@ -44,57 +52,35 @@ export default async function HomePage() {
   const text = data.text ?? '';
 
   return (
-    <main
-      className="min-h-dvh bg-white text-gray-900 antialiased"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '16px',
-        padding: '16px',
-      }}
-    >
-      {/* LOGO – škálovanie clampom, vycentrované */}
-      {logoUrl && (
-        <img
-          src={logoUrl}
-          alt="logo"
-          className="mx-auto w-auto"
-          style={{
-            height: 'clamp(56px, 12vw, 92px)', // pekné responsívne škálovanie
-            display: 'block',
-          }}
-        />
-      )}
-
-      {/* CAROUSEL – max šírka 900px, inak 92vw; vždy zaberie celú šírku tohto kontajnera */}
-      {images.length > 0 && (
-        <div
-          className="mx-auto w-full"
-          style={{ width: 'min(92vw, 900px)' }}
-        >
-          <Carousel
-            images={images}
-            aspect="4/5"       // ako IG post; pokojne zmeň na "1/1" alebo "16/9"
-            className="w-full" // nechávame len pre prípad ďalšieho štýlovania
+    <main className="min-h-dvh bg-white text-gray-900 antialiased">
+      <div className="mx-auto max-w-screen-sm p-4 flex flex-col items-center gap-4">
+        {/* LOGO – väčšie a responzívne */}
+        {logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt="logo"
+            className="mx-auto w-auto"
+            style={{ height: 'clamp(100px, 22vw, 160px)', display: 'block' }}
           />
-        </div>
-      )}
+        )}
 
-      {/* TEXT */}
-      {text ? (
-        <article
-          className="prose"
-          style={{
-            textAlign: 'center',
-            maxWidth: 'min(92vw, 900px)',
-          }}
-        >
-          {text}
-        </article>
-      ) : (
-        <p className="text-sm" style={{ opacity: 0.6 }}>Zatiaľ žiadny text.</p>
-      )}
+        {/* CAROUSEL – jedna fotka na šírku, pekne zaoblený „rámik“ */}
+        {images.length > 0 && (
+          <div className="mx-auto w-full" style={{ width: 'min(92vw, 900px)' }}>
+            <Carousel images={images} aspect="4/5" className="w-full" />
+          </div>
+        )}
+
+        {/* TEXT */}
+        {text ? (
+          <article className="prose" style={{ textAlign: 'center', maxWidth: 'min(92vw, 900px)' }}>
+            {text}
+          </article>
+        ) : (
+          <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
+        )}
+      </div>
     </main>
   );
 }
