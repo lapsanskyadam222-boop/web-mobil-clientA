@@ -27,7 +27,6 @@ export default function Carousel({
   const widthRef = React.useRef(1);
   const lockRef  = React.useRef<'x' | 'y' | null>(null);
 
-  // merač šírky viewportu (na prepočet percent)
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -38,7 +37,6 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
-  // začiatok ťahu
   const onDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
@@ -47,31 +45,30 @@ export default function Carousel({
     setDragX(0);
   };
 
-  // pohyb
   const onMove = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
 
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return; // ignoruj drobné pohyby, nech sa môže stránka vertikálne scrollovať
+      if (Math.abs(dx) < 6) return; // ignoruj drobné pohyby
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
-      e.preventDefault();           // drž gesto pre carousel
+      e.preventDefault();
       setDragX(dx);
     }
   };
 
-  // koniec ťahu (prahová 1/3 šírky)
   const onEnd = () => {
     if (!dragging) return;
     const width = Math.max(1, widthRef.current);
     const traveled = Math.abs(dragX) / width;
 
     let next = index;
-    if (traveled >= 0.33) {
-      if (dragX < 0 && index < total - 1) next = index + 1; // doľava -> ďalší
-      if (dragX > 0 && index > 0)        next = index - 1; // doprava -> späť
+    // ↓ prah znížený na 25 %
+    if (traveled >= 0.25) {
+      if (dragX < 0 && index < total - 1) next = index + 1;
+      if (dragX > 0 && index > 0)        next = index - 1;
     }
 
     setIndex(next);
@@ -87,23 +84,20 @@ export default function Carousel({
 
   return (
     <section className={`relative w-full ${className}`}>
-      {/* VIEWPORT – výšku drží aspect-ratio, overflow skryje ďalšie slidy */}
+      {/* VIEWPORT */}
       <div
         ref={wrapRef}
         className="relative w-full overflow-hidden rounded-2xl bg-black/5"
-        style={{
-          aspectRatio: aspect,
-          overscrollBehavior: 'contain',
-        }}
+        style={{ aspectRatio: aspect, overscrollBehavior: 'contain' }}
       >
-        {/* TRACK – 100% výšky viewportu, touch-action vypnuté */}
+        {/* TRACK */}
         <div
           className="flex select-none"
           style={{
             touchAction: 'none',
             height: '100%',
             transform: `translate3d(${tx}%, 0, 0)`,
-            transition: dragging ? 'none' : 'transform 280ms cubic-bezier(.22,.61,.36,1)',
+            transition: dragging ? 'none' : 'transform 260ms cubic-bezier(.22,.61,.36,1)',
             willChange: 'transform',
           }}
           onPointerDown={onDown}
