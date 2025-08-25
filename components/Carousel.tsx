@@ -14,20 +14,49 @@ export default function Carousel({
   aspect = '4/5',
   className = '',
 }: Props) {
-  const [index, setIndex] = React.useState(0);
-  const [dragX, setDragX] = React.useState(0);
-  const [dragging, setDragging] = React.useState(false);
-
-  const startX = React.useRef(0);
-  const widthRef = React.useRef(1);
-  const wrapRef = React.useRef<HTMLDivElement | null>(null);
-  const lockRef = React.useRef<'x' | 'y' | null>(null);
-
   const items = Array.isArray(images) ? images.filter(Boolean) : [];
   const total = items.length;
   if (total === 0) return null;
 
-  // zmeraj šírku viewportu pre výpočet percent pri ťahaní
+  const [index, setIndex]   = React.useState(0);
+  const [dragX, setDragX]   = React.useState(0);
+  const [dragging, setDragging] = React.useState(false);
+
+  const startX    = React.useRef(0);
+  const widthRef  = React.useRef(1);
+  const wrapRef   = React.useRef<HTMLDivElement | null>(null);
+  const lockRef   = React.useRef<'x' | 'y' | null>(null);
+
+  // na čas ťahania úplne zamkneme scroll stránky (funguje aj na iOS)
+  const savedScrollY = React.useRef(0);
+  React.useEffect(() => {
+    if (!dragging) return;
+    const body = document.body;
+    const doc  = document.documentElement;
+
+    savedScrollY.current = window.scrollY || doc.scrollTop || 0;
+
+    // lock
+    body.style.position = 'fixed';
+    body.style.top = `-${savedScrollY.current}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+
+    return () => {
+      // unlock
+      body.style.position = '';
+      body.style.top = '';
+      body.style.left = '';
+      body.style.right = '';
+      body.style.width = '';
+      body.style.overflow = '';
+      window.scrollTo(0, savedScrollY.current);
+    };
+  }, [dragging]);
+
+  // merač šírky viewportu pre prepočet drag -> %
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -38,17 +67,7 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
-  // počas ťahania vypni skrolovanie celej stránky (poistka pre mobily)
-  React.useEffect(() => {
-    if (!dragging) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [dragging]);
-
-  // drag / swipe
+  // pointer handlers
   const onPointerDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
@@ -62,11 +81,13 @@ export default function Carousel({
     const dx = e.clientX - startX.current;
 
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return; // neblokuj zvislý scroll pri malom pohybe
+      // kým nie je jasný horizontálny smer, nič nezamykáme
+      if (Math.abs(dx) < 6) return;
       lockRef.current = 'x';
     }
+
     if (lockRef.current === 'x') {
-      // dôležité pre iOS/Safari: funguje len ak má element touch-action != auto
+      // dôležité: funguje, lebo na tracku nižšie je touch-action:none
       e.preventDefault();
       setDragX(dx);
     }
@@ -77,7 +98,8 @@ export default function Carousel({
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
     if (delta <= -0.15 && index < total - 1) next = index + 1;
-    if (delta >= 0.15 && index > 0)        next = index - 1;
+    if (delta >=  0.15 && index > 0)        next = index - 1;
+
     setIndex(next);
     setDragX(0);
     setDragging(false);
@@ -91,14 +113,14 @@ export default function Carousel({
 
   return (
     <section className={`relative ${className}`}>
-      {/* VIEWPORT: ukáže vždy len jeden slide */}
+      {/* VIEWPORT – ukáže vždy 1 slide; zabráň scroll‑chainingu */}
       <div
         ref={wrapRef}
-        className="relative w-full overflow-hidden rounded-2xl bg-black/5 touch-pan-y"
+        className="relative w-full overflow-hidden rounded-2xl bg-black/5 overscroll-contain touch-pan-y"
       >
-        {/* TRACK */}
+        {/* TRACK – tu vypneme touch gestá pre stránku */}
         <div
-          className="flex select-none touch-none" /* touch-none = touch-action:none */
+          className="flex select-none touch-none"
           style={{
             transform: `translate3d(${tx}%, 0, 0)`,
             transition: dragging ? 'none' : 'transform 300ms ease',
@@ -113,14 +135,13 @@ export default function Carousel({
           {items.map((src, i) => (
             <div
               key={i}
-              className="relative overflow-hidden"
               style={{
-                /* presne 100% šírky viewportu */
                 flex: '0 0 100%',
                 width: '100%',
-                /* výška podľa pomeru strán + rozumné minimum */
                 aspectRatio: aspect,
                 minHeight: 180,
+                position: 'relative',
+                overflow: 'hidden',
               }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -136,7 +157,7 @@ export default function Carousel({
         </div>
       </div>
 
-      {/* Šípky (desktop) */}
+      {/* šípky (desktop) */}
       {total > 1 && (
         <>
           <button
@@ -158,7 +179,7 @@ export default function Carousel({
         </>
       )}
 
-      {/* Bodky */}
+      {/* bodky */}
       {total > 1 && (
         <div className="mt-2 flex justify-center gap-1.5">
           {items.map((_, i) => (
