@@ -1,3 +1,4 @@
+// app/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -5,12 +6,25 @@ import Carousel from '@/components/Carousel';
 import { SiteContent } from '@/lib/types';
 import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
 
-async function getContent(): Promise<{ ok: boolean; data?: SiteContent; error?: string; status?: number }> {
+async function getContent(): Promise<{
+  ok: boolean;
+  data?: SiteContent;
+  error?: string;
+  status?: number;
+}> {
   try {
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
+
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        error: `Fetch ${url} failed with ${res.status}`,
+      };
+    }
+
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
   } catch (e: any) {
@@ -26,7 +40,8 @@ export default async function HomePage() {
       <main className="mx-auto max-w-2xl p-6">
         <h1 className="mb-2 text-xl font-semibold">Načítanie obsahu zlyhalo</h1>
         <p className="mb-2 text-sm opacity-70">
-          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
+          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri{' '}
+          <code>/api/content</code>.
         </p>
         <pre className="whitespace-pre-wrap text-xs opacity-60">
           {result.status ? `HTTP ${result.status}\n` : ''}
@@ -42,22 +57,31 @@ export default async function HomePage() {
   const text = data.text ?? '';
 
   return (
-    <main className="flex flex-col items-center gap-4 p-6">
-      {logoUrl ? (
+    <main className="flex flex-col items-center gap-6 p-6">
+      {/* LOGO */}
+      {logoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
-      ) : null}
+        <img
+          src={logoUrl}
+          alt="logo"
+          className="mx-auto h-16 w-auto"
+        />
+      )}
 
+      {/* CAROUSEL */}
       {images.length > 0 && (
         <Carousel
           images={images}
-          aspect="4/5"                                   // môžeš dať aj "1/1", "16/9"…
+          aspect="4/5" // môžeš zmeniť na "1/1", "16/9"…
           className="mx-auto w-full max-w-[min(92vw,900px)]"
         />
       )}
 
+      {/* TEXT */}
       {text ? (
-        <article className="prose max-w-none text-base whitespace-pre-wrap">{text}</article>
+        <article className="prose max-w-none text-base whitespace-pre-wrap text-center">
+          {text}
+        </article>
       ) : (
         <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
       )}
