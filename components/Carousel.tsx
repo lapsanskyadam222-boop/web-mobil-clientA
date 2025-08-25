@@ -4,7 +4,7 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** Pomer strán: napr. "4/5", "1/1", "16/9". Default "4/5". */
+  /** Pomer strán: "4/5", "1/1", "16/9"... (default "4/5") */
   aspect?: string;
   className?: string;
 };
@@ -27,7 +27,6 @@ export default function Carousel({
   const total = items.length;
   if (total === 0) return null;
 
-  // zmeraj šírku viewportu (koľko pixelov predstavuje 100 % šírky jedného slidu)
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -38,7 +37,6 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
-  // drag / swipe
   const onPointerDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
@@ -50,8 +48,6 @@ export default function Carousel({
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
-
-    // nechytaj Y-scroll, kým nie je jasné, že sa hýbeme po X
     if (!lockRef.current) {
       if (Math.abs(dx) < 6) return;
       lockRef.current = 'x';
@@ -66,8 +62,8 @@ export default function Carousel({
     if (!dragging) return;
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
-    if (delta <= -0.15 && index < total - 1) next = index + 1; // posun doľava -> ďalší
-    if (delta >= 0.15 && index > 0)        next = index - 1;   // doprava -> späť
+    if (delta <= -0.15 && index < total - 1) next = index + 1;
+    if (delta >= 0.15 && index > 0)        next = index - 1;
     setIndex(next);
     setDragX(0);
     setDragging(false);
@@ -81,12 +77,12 @@ export default function Carousel({
 
   return (
     <section className={`relative ${className}`}>
-      {/* VIEWPORT: zobrazuje vždy len jeden slide */}
+      {/* VIEWPORT: vždy len jeden slide */}
       <div
         ref={wrapRef}
         className="relative w-full overflow-hidden rounded-2xl bg-black/5"
       >
-        {/* TRACK: všetky slidy vedľa seba */}
+        {/* TRACK */}
         <div
           className="flex touch-pan-y select-none"
           style={{
@@ -103,8 +99,15 @@ export default function Carousel({
           {items.map((src, i) => (
             <div
               key={i}
-              className="relative basis-full shrink-0 grow-0"
-              style={{ aspectRatio: aspect, minHeight: 180 }} // výška držaná pomerom + bezpečné minimum
+              className="relative overflow-hidden"
+              style={{
+                /* TOTO JE DÔLEŽITÉ: presne 100% šírky viewportu */
+                flex: '0 0 100%',
+                width: '100%',
+                /* výška držaná pomerom strán + rozumné minimum */
+                aspectRatio: aspect,
+                minHeight: 180,
+              }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -119,7 +122,7 @@ export default function Carousel({
         </div>
       </div>
 
-      {/* ŠÍPKY (desktop) */}
+      {/* Šípky (desktop) */}
       {total > 1 && (
         <>
           <button
