@@ -1,3 +1,4 @@
+// app/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -14,16 +15,10 @@ async function getContent(): Promise<{
   try {
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
-
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
-      return {
-        ok: false,
-        status: res.status,
-        error: `Fetch ${url} failed with ${res.status}`,
-      };
+      return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
     }
-
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
   } catch (e: any) {
@@ -36,16 +31,12 @@ export default async function HomePage() {
 
   if (!result.ok) {
     return (
-      <main className="mx-auto max-w-2xl p-6">
-        <h1 className="mb-2 text-xl font-semibold">Načítanie obsahu zlyhalo</h1>
-        <p className="mb-2 text-sm opacity-70">
-          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri{' '}
-          <code>/api/content</code>.
+      <main className="min-h-dvh bg-white text-gray-900 antialiased mx-auto max-w-screen-sm p-4">
+        <h1 className="text-xl font-semibold mb-4">Načítanie obsahu zlyhalo</h1>
+        <p className="text-sm mb-4">
+          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
         </p>
-        <pre className="whitespace-pre-wrap text-xs opacity-60">
-          {result.status ? `HTTP ${result.status}\n` : ''}
-          {result.error ?? ''}
-        </pre>
+        <pre className="text-sm border rounded p-4">{result.status ? `HTTP ${result.status}\n` : ''}{result.error ?? ''}</pre>
       </main>
     );
   }
@@ -56,7 +47,7 @@ export default async function HomePage() {
   const text = data.text ?? '';
 
   return (
-    <main className="flex flex-col items-center p-6">
+    <main className="min-h-dvh bg-white text-gray-900 antialiased flex flex-col items-center gap-4 p-4">
       {/* LOGO */}
       {logoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -64,30 +55,29 @@ export default async function HomePage() {
           src={logoUrl}
           alt="logo"
           className="mx-auto w-auto"
-          style={{
-            height: "var(--logoH)",
-            marginTop: "var(--logoGapTop)",
-            marginBottom: "var(--logoGapBottom)",
-          }}
+          /* responzívna výška loga – väčšie na mobile, stále centrované */
+          style={{ height: 'clamp(88px, 14vw, 140px)' }}
         />
       )}
 
-      {/* CAROUSEL */}
+      {/* CAROUSEL – šírka sa prispôsobí obrazovke, výška drží pomer 4/5 */}
       {images.length > 0 && (
-        <Carousel
-          images={images}
-          aspect="4/5" // pomer strán ako IG post
-          className="mx-auto w-full max-w-[min(92vw,900px)]"
-        />
+        <div className="mx-auto w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
+          <Carousel
+            images={images}
+            aspect="4/5"
+            className="w-full"
+          />
+        </div>
       )}
 
       {/* TEXT */}
       {text ? (
-        <article className="prose max-w-none text-base whitespace-pre-wrap text-center mt-6">
+        <article className="prose mx-auto max-w-screen-sm" style={{ textAlign: 'center' }}>
           {text}
         </article>
       ) : (
-        <p className="text-sm opacity-60 mt-6">Zatiaľ žiadny text.</p>
+        <p className="text-sm" style={{ opacity: 0.6 }}>Zatiaľ žiadny text.</p>
       )}
     </main>
   );

@@ -4,10 +4,12 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  aspect?: string; // napr. "4/5", "16/9", "1/1"
+  /** Pomer strán – napr. "4/5", "1/1", "16/9". Default: 4/5. */
+  aspect?: string;
   className?: string;
 };
 
+/** prepočíta "4/5" → 125 (% padding-top) */
 function aspectToPercent(aspect?: string) {
   const raw = (aspect ?? '4/5').replace(/\s/g, '');
   const [w, h] = raw.split('/').map((n) => Number(n));
@@ -28,7 +30,7 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
   const total = Array.isArray(images) ? images.length : 0;
   if (total === 0) return null;
 
-  // zmeraj šírku
+  // zmeraj šírku viewportu kvôli percentám posunu
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -39,7 +41,7 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
     return () => ro.disconnect();
   }, []);
 
-  // drag
+  // drag / swipe (citlivosť: 25% šírky)
   const beginDrag = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
@@ -47,12 +49,12 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
     setDragging(true);
     setDragX(0);
   };
-
   const moveDrag = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
+
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return;
+      if (Math.abs(dx) < 6) return; // neblokuj vertikálny scroll
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -60,13 +62,12 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
       setDragX(dx);
     }
   };
-
   const endDrag = () => {
     if (!dragging) return;
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
-    if (delta <= -0.25 && index < total - 1) next = index + 1;
-    if (delta >= 0.25 && index > 0) next = index - 1;
+    if (delta <= -0.25 && index < total - 1) next = index + 1; // doľava → ďalší
+    if (delta >=  0.25 && index > 0)        next = index - 1; // doprava → späť
     setIndex(next);
     setDragX(0);
     setDragging(false);
@@ -78,10 +79,12 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
 
   return (
     <section className={`relative w-full ${className}`}>
+      {/* VIEWPORT – vždy len jeden slide */}
       <div
         ref={wrapRef}
-        className="relative w-full overflow-hidden rounded-2xl bg-black/5 min-h-[120px]"
+        className="relative w-full overflow-hidden bg-black/5 min-h-[120px]"
       >
+        {/* TRACK */}
         <div
           className="flex touch-pan-y select-none"
           style={{
@@ -97,7 +100,9 @@ export default function Carousel({ images, aspect = '4/5', className = '' }: Pro
         >
           {images.map((src, i) => (
             <div key={i} className="relative basis-full shrink-0 grow-0 overflow-hidden">
+              {/* drží výšku podľa pomeru strán */}
               <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
+              {/* skutočný obsah */}
               <div className="absolute inset-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
