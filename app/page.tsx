@@ -17,11 +17,7 @@ async function getContent(): Promise<{
     const url = `${base}/api/content`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
-      return {
-        ok: false,
-        status: res.status,
-        error: `Fetch ${url} failed with ${res.status}`,
-      };
+      return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
     }
     const json = (await res.json()) as SiteContent;
     return { ok: true, data: json };
@@ -35,11 +31,10 @@ export default async function HomePage() {
 
   if (!result.ok) {
     return (
-      <main className="mx-auto max-w-2xl p-6">
+      <main className="mx-auto max-w-2xl p-6 text-center">
         <h1 className="mb-2 text-xl font-semibold">Načítanie obsahu zlyhalo</h1>
         <p className="mb-2 text-sm opacity-70">
-          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri{' '}
-          <code>/api/content</code>.
+          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
         </p>
         <pre className="whitespace-pre-wrap text-xs opacity-60">
           {result.status ? `HTTP ${result.status}\n` : ''}
@@ -51,7 +46,7 @@ export default async function HomePage() {
 
   const data = result.data!;
   const logoUrl = data.logoUrl ?? null;
-  const images = Array.isArray(data.carousel) ? data.carousel : [];
+  const images = Array.isArray(data.carousel) ? data.carousel.filter(Boolean) : [];
   const text = data.text ?? '';
 
   return (
@@ -62,11 +57,11 @@ export default async function HomePage() {
         <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
       )}
 
-      {/* CAROUSEL */}
+      {/* CAROUSEL – iba ak máme aspoň 1 platnú URL */}
       {images.length > 0 && (
         <Carousel
           images={images}
-          aspect="4/5"                                 // IG pomer; môžeš zmeniť na "1/1", "16/9"…
+          aspect="4/5"                               // môžeš zmeniť na "1/1", "16/9"…
           className="mx-auto w-full max-w-[min(92vw,900px)]"
         />
       )}
