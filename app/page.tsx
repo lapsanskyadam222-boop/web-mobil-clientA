@@ -1,3 +1,4 @@
+// app/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -23,7 +24,7 @@ export default async function HomePage() {
 
   if (!result.ok) {
     return (
-      <main className="mx-auto max-w-2xl p-6">
+      <main className="mx-auto max-w-3xl p-4 text-center">
         <h1 className="mb-2 text-xl font-semibold">Načítanie obsahu zlyhalo</h1>
         <p className="mb-2 text-sm opacity-70">
           API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
@@ -38,31 +39,35 @@ export default async function HomePage() {
 
   const data = result.data!;
   const logoUrl = data.logoUrl ?? null;
-  const images = Array.isArray(data.carousel) ? data.carousel.filter(Boolean) : [];
-  const text = data.text ?? '';
+  const images  = Array.isArray(data.carousel) ? data.carousel : [];
+  const text    = data.text ?? '';
 
   return (
-    <main className="flex flex-col items-center gap-6 p-6">
-      {/* logo */}
+    <main className="mx-auto flex max-w-3xl flex-col items-center p-4 text-center">
+      {/* LOGO */}
       {logoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={logoUrl} alt="logo" className="mx-auto h-16 w-auto" />
+        <img src={logoUrl} alt="logo" className="h-16 w-auto" />
       )}
 
-      {/* carousel – jedna veľká fotka, pomer ako IG post */}
+      {/* 0.5 cm ~ 8px (mt-2). Ak trváš na fyzických jednotkách: style={{ marginTop: '0.5cm' }} */}
+      <div className="mt-2" />
+
+      {/* CAROUSEL */}
       {images.length > 0 && (
         <Carousel
           images={images}
           aspect="4/5"
-          className="mx-auto w-full max-w-[min(92vw,900px)]"
+          className="w-full max-w-[min(92vw,900px)]"
         />
       )}
 
-      {/* text */}
+      {/* 0.5 cm pod carouselom */}
+      <div className="mt-2" />
+
+      {/* TEXT */}
       {text ? (
-        <article className="prose max-w-none text-base whitespace-pre-wrap text-center">
-          {text}
-        </article>
+        <article className="prose max-w-none whitespace-pre-wrap text-base">{text}</article>
       ) : (
         <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
       )}

@@ -4,7 +4,7 @@ import * as React from 'react';
 
 type Props = {
   images: string[];
-  /** Pomer strán: "4/5", "1/1", "16/9"... (default "4/5") */
+  /** Pomer strán: "4/5", "1/1", "16/9"… (default "4/5") */
   aspect?: string;
   className?: string;
 };
@@ -18,45 +18,16 @@ export default function Carousel({
   const total = items.length;
   if (total === 0) return null;
 
-  const [index, setIndex]   = React.useState(0);
-  const [dragX, setDragX]   = React.useState(0);
+  const [index, setIndex] = React.useState(0);
+  const [dragX, setDragX] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
 
-  const startX    = React.useRef(0);
-  const widthRef  = React.useRef(1);
-  const wrapRef   = React.useRef<HTMLDivElement | null>(null);
-  const lockRef   = React.useRef<'x' | 'y' | null>(null);
+  const startX = React.useRef(0);
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const widthRef = React.useRef(1);
+  const lockRef = React.useRef<'x' | 'y' | null>(null);
 
-  // na čas ťahania úplne zamkneme scroll stránky (funguje aj na iOS)
-  const savedScrollY = React.useRef(0);
-  React.useEffect(() => {
-    if (!dragging) return;
-    const body = document.body;
-    const doc  = document.documentElement;
-
-    savedScrollY.current = window.scrollY || doc.scrollTop || 0;
-
-    // lock
-    body.style.position = 'fixed';
-    body.style.top = `-${savedScrollY.current}px`;
-    body.style.left = '0';
-    body.style.right = '0';
-    body.style.width = '100%';
-    body.style.overflow = 'hidden';
-
-    return () => {
-      // unlock
-      body.style.position = '';
-      body.style.top = '';
-      body.style.left = '';
-      body.style.right = '';
-      body.style.width = '';
-      body.style.overflow = '';
-      window.scrollTo(0, savedScrollY.current);
-    };
-  }, [dragging]);
-
-  // merač šírky viewportu pre prepočet drag -> %
+  // meranie šírky viewportu (kvôli prepočtu drag -> %)
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -67,8 +38,8 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
-  // pointer handlers
-  const onPointerDown = (e: React.PointerEvent) => {
+  // pointer handlers – čisté, bez zásahov do <body>
+  const onDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
     lockRef.current = null;
@@ -76,29 +47,34 @@ export default function Carousel({
     setDragX(0);
   };
 
-  const onPointerMove = (e: React.PointerEvent) => {
+  const onMove = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
 
     if (!lockRef.current) {
-      // kým nie je jasný horizontálny smer, nič nezamykáme
-      if (Math.abs(dx) < 6) return;
+      if (Math.abs(dx) < 8) return;  // kým nie je jasný smer, neblokuj scroll
       lockRef.current = 'x';
     }
 
     if (lockRef.current === 'x') {
-      // dôležité: funguje, lebo na tracku nižšie je touch-action:none
+      // kľúčové: necháme si riadiť gesto a stránku „odpojíme“
       e.preventDefault();
       setDragX(dx);
     }
   };
 
-  const onPointerEnd = () => {
+  const onEnd = () => {
     if (!dragging) return;
-    const delta = dragX / Math.max(1, widthRef.current);
+
+    const width = Math.max(1, widthRef.current);
+    const traveled = Math.abs(dragX) / width;
+
     let next = index;
-    if (delta <= -0.15 && index < total - 1) next = index + 1;
-    if (delta >=  0.15 && index > 0)        next = index - 1;
+    if (traveled >= 0.5) {
+      // až keď potiahneš aspoň cez polovicu
+      if (dragX < 0 && index < total - 1) next = index + 1; // doľava -> ďalší
+      if (dragX > 0 && index > 0)        next = index - 1; // doprava -> späť
+    }
 
     setIndex(next);
     setDragX(0);
@@ -106,31 +82,35 @@ export default function Carousel({
     lockRef.current = null;
   };
 
-  const goPrev = () => setIndex(i => Math.max(0, i - 1));
-  const goNext = () => setIndex(i => Math.min(total - 1, i + 1));
-
+  // preklad trate
   const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
 
   return (
     <section className={`relative ${className}`}>
-      {/* VIEWPORT – ukáže vždy 1 slide; zabráň scroll‑chainingu */}
+      {/* VIEWPORT – vždy 1 slide; zabráni „pretiahnutiu“ scrollu */}
       <div
         ref={wrapRef}
-        className="relative w-full overflow-hidden rounded-2xl bg-black/5 overscroll-contain touch-pan-y"
+        className="relative w-full overflow-hidden rounded-2xl bg-black/5"
+        style={{
+          aspectRatio: aspect,       // drží stabilnú výšku → žiadne skoky layoutu
+          overscrollBehavior: 'contain',
+        }}
       >
-        {/* TRACK – tu vypneme touch gestá pre stránku */}
+        {/* TRACK – vypneme default dotykové gestá, aby fungovalo preventDefault() */}
         <div
-          className="flex select-none touch-none"
+          className="flex select-none"
           style={{
+            touchAction: 'none',
             transform: `translate3d(${tx}%, 0, 0)`,
-            transition: dragging ? 'none' : 'transform 300ms ease',
+            transition: dragging ? 'none' : 'transform 320ms cubic-bezier(.22,.61,.36,1)',
             willChange: 'transform',
+            height: '100%',
           }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerEnd}
-          onPointerCancel={onPointerEnd}
-          onPointerLeave={onPointerEnd}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onEnd}
+          onPointerCancel={onEnd}
+          onPointerLeave={onEnd}
         >
           {items.map((src, i) => (
             <div
@@ -138,8 +118,7 @@ export default function Carousel({
               style={{
                 flex: '0 0 100%',
                 width: '100%',
-                aspectRatio: aspect,
-                minHeight: 180,
+                height: '100%',
                 position: 'relative',
                 overflow: 'hidden',
               }}
@@ -157,29 +136,7 @@ export default function Carousel({
         </div>
       </div>
 
-      {/* šípky (desktop) */}
-      {total > 1 && (
-        <>
-          <button
-            aria-label="Predchádzajúci"
-            onClick={goPrev}
-            disabled={index === 0}
-            className="absolute left-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-black/50 p-2 text-white disabled:opacity-40 md:block"
-          >
-            ‹
-          </button>
-          <button
-            aria-label="Ďalší"
-            onClick={goNext}
-            disabled={index === total - 1}
-            className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-black/50 p-2 text-white disabled:opacity-40 md:block"
-          >
-            ›
-          </button>
-        </>
-      )}
-
-      {/* bodky */}
+      {/* bodky pod fotkou */}
       {total > 1 && (
         <div className="mt-2 flex justify-center gap-1.5">
           {items.map((_, i) => (
