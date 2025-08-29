@@ -1,15 +1,7 @@
-// app/api/slots/route.ts
 import { NextResponse } from 'next/server';
 import { readJson, writeJson } from '@/lib/blobJson';
 
-type Slot = {
-  id: string;
-  date: string;  // YYYY-MM-DD
-  time: string;  // HH:MM (24h)
-  locked?: boolean;
-  booked?: boolean;
-};
-
+type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean; };
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
 const DEFAULT_SLOTS: SlotsPayload = {
@@ -26,8 +18,6 @@ const KEY = 'slots.json';
 
 export async function GET() {
   const data = await readJson<SlotsPayload>(KEY, DEFAULT_SLOTS);
-  if (data === DEFAULT_SLOTS) {
-    await writeJson(KEY, DEFAULT_SLOTS);
-  }
+  if (data === DEFAULT_SLOTS) await writeJson(KEY, DEFAULT_SLOTS);
   return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
 }

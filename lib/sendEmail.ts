@@ -1,4 +1,3 @@
-// lib/sendEmail.ts
 import { Resend } from 'resend';
 
 const resendKey = process.env.RESEND_API_KEY || '';
@@ -10,10 +9,7 @@ export async function sendReservationEmail(
   htmlBody: string,
   ics?: { filename: string; content: string }
 ) {
-  if (!resendKey || !fromEmail || !notifyEmail) {
-    // ak nie je nakonfigurované, neblokujeme rezerváciu
-    return { skipped: true };
-  }
+  if (!resendKey || !fromEmail || !notifyEmail) return { skipped: true };
   const resend = new Resend(resendKey);
   await resend.emails.send({
     from: fromEmail,

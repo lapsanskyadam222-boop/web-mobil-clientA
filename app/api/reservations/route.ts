@@ -1,4 +1,3 @@
-// app/api/reservations/route.ts
 import { NextResponse } from 'next/server';
 import { readJson, writeJson } from '@/lib/blobJson';
 import { buildICS } from '@/lib/ics';
@@ -16,10 +15,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { slotId, name, phone } = body as { slotId?: string; name?: string; phone?: string };
-
-    if (!slotId || !name || !phone) {
-      return NextResponse.json({ error: 'Chýba slotId, meno alebo telefón.' }, { status: 400 });
-    }
+    if (!slotId || !name || !phone) return NextResponse.json({ error: 'Chýba slotId, meno alebo telefón.' }, { status: 400 });
 
     const slotsPayload = await readJson<SlotsPayload>(SLOTS_KEY, { slots: [], updatedAt: '' });
     const resPayload = await readJson<ReservationsPayload>(RES_KEY, { reservations: [], updatedAt: '' });
@@ -47,7 +43,6 @@ export async function POST(req: Request) {
     await writeJson(SLOTS_KEY, slotsPayload);
     await writeJson(RES_KEY, resPayload);
 
-    // Email + ICS (ak máš RESEND kľúč a FROM/NOTIFY env)
     const startLocal = new Date(`${slot.date}T${slot.time}:00`);
     const ics = buildICS({
       title: `Rezervácia: ${name} (${phone})`,
