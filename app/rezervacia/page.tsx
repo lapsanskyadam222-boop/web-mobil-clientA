@@ -1,146 +1,150 @@
 // app/rezervacia/page.tsx
-"use client";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean; };
+import { use } from "react";
+
+type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean };
+
+async function getSlots(): Promise<Slot[]> {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/slots?t=${Date.now()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return Array.isArray(json?.slots) ? (json.slots as Slot[]) : [];
+}
+
+function formatDayLabel(d: string) {
+  // d je "YYYY-MM-DD"
+  const dt = new Date(d);
+  const wd = dt.toLocaleDateString("sk-SK", { weekday: "short" }); // po, ut, st, ...
+  const date = dt.toLocaleDateString("sk-SK", { day: "numeric", month: "numeric" }); // 5. 9.
+  return `${wd} ${date}`;
+}
 
 export default function RezervaciaPage() {
-  const router = useRouter();
+  // server component – môžeme "use" sľub
+  const slots = use(getSlots());
 
-  const [slots, setSlots] = useState<Slot[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // len budúcnosť + neuzamknuté / nezarezervované pre výber
+  const nowISO = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const available = slots
+    .filter(s => s.date >= nowISO && !s.locked && !s.booked)
+    .sort((a, b) => (a.date === b.date ? (a.time < b.time ? -1 : 1) : a.date < b.date ? -1 : 1));
 
-  const [activeDay, setActiveDay] = useState<string>("");
-  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  // unikátne dátumy zo slotov (vrátane soboty/nedele, ak existujú)
+  const days = Array.from(new Set(available.map(s => s.date)));
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/slots", { cache: "no-store" });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || "Nepodarilo sa načítať sloty.");
-        if (!mounted) return;
-        setSlots(json.slots || []);
-        const firstDay = (json.slots || [])
-          .map((s: Slot) => s.date)
-          .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
-          .sort()[0];
-        setActiveDay(firstDay || "");
-      } catch (e: any) {
-        setError(e?.message || "Chyba pri načítavaní slotov.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-    return () => { mounted = false };
-  }, []);
-
-  const days = useMemo(() => {
-    const set = new Set(slots.map(s => s.date));
-    return Array.from(set).sort();
-  }, [slots]);
-
-  const daySlots = useMemo(
-    () => slots.filter(s => s.date === activeDay && !s.locked && !s.booked),
-    [activeDay, slots]
-  );
-
-  const phoneOk = phone.replace(/\D/g, "").length >= 9;
-
-  async function submitReservation() {
-    if (!selectedSlot || !name || !phoneOk) {
-      alert("Prosím vyber si termín a vyplň meno + platný telefón.");
-      return;
-    }
-    try {
-      setSaving(true);
-      const res = await fetch("/api/reservations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotId: selectedSlot.id, name, phone }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Rezervácia zlyhala.");
-
-      // presmeruj na success stránku
-      router.push("/rezervacia/success");
-    } catch (e: any) {
-      alert(e?.message || "Chyba pri odosielaní.");
-    } finally {
-      setSaving(false);
-    }
+  // ak nemáme nič, ukáž správu
+  if (!days.length) {
+    return (
+      <main className="mx-auto max-w-xl p-6">
+        <h1 className="mb-4 text-2xl font-bold">Rezervácia</h1>
+        <p className="text-sm opacity-70">Momentálne nie sú dostupné žiadne termíny. Skúste neskôr.</p>
+      </main>
+    );
   }
 
-  if (loading) return <main className="mx-auto max-w-3xl px-4 py-8">Načítavam…</main>;
-  if (error) return <main className="mx-auto max-w-3xl px-4 py-8 text-red-600">Chyba: {error}</main>;
+  // predvolený deň = prvý dostupný
+  const defaultDay = days[0];
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Rezervácia</h1>
+    <main className="mx-auto max-w-xl p-6">
+      <h1 className="mb-4 text-2xl font-bold">Rezervácia</h1>
 
-      {/* Prepínač dní */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      {/* Tabs s dňami vytvorenými zo slotov (žiadne filtrovanie víkendov) */}
+      <DayTabs days={days} slots={available} defaultDay={defaultDay} />
+    </main>
+  );
+}
+
+/* ---------- Client part (tabs + formulár) ---------- */
+"use client";
+import { useMemo, useState } from "react";
+
+function DayTabs({ days, slots, defaultDay }: { days: string[]; slots: Slot[]; defaultDay: string }) {
+  const [active, setActive] = useState(defaultDay);
+  const daySlots = useMemo(
+    () => slots.filter(s => s.date === active).sort((a, b) => (a.time < b.time ? -1 : 1)),
+    [active, slots]
+  );
+
+  return (
+    <div className="w-full">
+      <div className="mb-3 flex gap-2">
         {days.map(d => (
           <button
             key={d}
-            onClick={() => { setActiveDay(d); setSelectedSlot(null); }}
-            className={`rounded-lg border px-3 py-2 ${d === activeDay ? "bg-black text-white" : "hover:bg-gray-100"}`}
-            title={new Date(d).toLocaleDateString("sk-SK")}
+            onClick={() => setActive(d)}
+            className={`rounded px-2 py-1 text-sm border ${active === d ? "bg-black text-white" : "bg-white"}`}
           >
-            {new Date(d).toLocaleDateString("sk-SK", { weekday: "short", day: "2-digit", month: "2-digit" })}
+            {formatDayLabel(d)}
           </button>
         ))}
       </div>
 
-      {/* Sloty */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-8">
-        {daySlots.length === 0 && <p className="text-sm text-gray-600">Žiadne voľné časy pre tento deň.</p>}
-        {daySlots.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setSelectedSlot(s)}
-            className={`rounded-xl border px-3 py-3 text-center ${selectedSlot?.id === s.id ? "bg-black text-white" : "hover:bg-gray-100"}`}
-          >
-            {s.time}
-          </button>
-        ))}
+      <SlotsForm date={active} times={daySlots.map(s => s.time)} />
+    </div>
+  );
+}
+
+function SlotsForm({ date, times }: { date: string; times: string[] }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [time, setTime] = useState(times[0] ?? "");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!time) return alert("Vyber čas");
+    try {
+      const res = await fetch("/api/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, time, name, phone }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || "Odoslanie zlyhalo");
+      window.location.href = "/rezervacia/ok";
+    } catch (err: any) {
+      alert(err?.message || "Odoslanie zlyhalo");
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="w-full rounded border p-3 space-y-3">
+      <div className="text-xs opacity-70">
+        Dátum: <strong>{new Date(date).toLocaleDateString("sk-SK", { day: "numeric", month: "numeric", year: "numeric" })}</strong>
       </div>
 
-      {/* Formulár */}
-      <div className="rounded-2xl border p-4 space-y-3">
-        <div className="grid gap-2">
-          <label className="text-sm font-medium">Meno</label>
-          <input className="rounded-lg border px-3 py-2" value={name} onChange={e => setName(e.target.value)} placeholder="Tvoje meno" />
-        </div>
-        <div className="grid gap-2">
-          <label className="text-sm font-medium">Telefón</label>
-          <input className="rounded-lg border px-3 py-2" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+421 ..." />
-          {phone && !phoneOk && (
-            <p className="text-xs text-red-600">Zadaj platný telefón (min. 9 číslic).</p>
-          )}
-        </div>
+      <label className="block">
+        <span className="block text-xs mb-1">Čas</span>
+        <select
+          value={time}
+          onChange={e => setTime(e.target.value)}
+          className="w-full border rounded px-3 py-2"
+        >
+          {times.map(t => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+      </label>
 
-        <div className="pt-2">
-          <button
-            onClick={submitReservation}
-            className="w-full rounded-xl bg-black px-6 py-3 text-white hover:bg-gray-800 transition disabled:opacity-50"
-            disabled={!selectedSlot || saving || !name || !phoneOk}
-          >
-            {saving ? "Odosielam…" : selectedSlot ? `Rezervovať ${selectedSlot.date} ${selectedSlot.time}` : "Vyber si termín"}
-          </button>
-        </div>
+      <label className="block">
+        <span className="block text-xs mb-1">Meno</span>
+        <input className="w-full border rounded px-3 py-2" value={name} onChange={e => setName(e.target.value)} />
+      </label>
 
-        <p className="text-xs text-gray-500">
-          * Sloty sa čítajú z /api/slots a rezervácia sa odosiela na /api/reservations.
-        </p>
-      </div>
-    </main>
+      <label className="block">
+        <span className="block text-xs mb-1">Telefón</span>
+        <input className="w-full border rounded px-3 py-2" value={phone} onChange={e => setPhone(e.target.value)} />
+      </label>
+
+      <button type="submit" className="w-full rounded bg-black text-white py-2 hover:bg-gray-800">
+        Vybrať si termín
+      </button>
+
+      <p className="text-xs opacity-70">* Sloty sa čítajú z /api/slots a víkendy sú povolené.</p>
+    </form>
   );
 }
