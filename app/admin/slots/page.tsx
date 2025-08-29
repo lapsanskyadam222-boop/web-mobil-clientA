@@ -75,25 +75,9 @@ export default function AdminSlotsPage() {
       {error && <p className="text-red-600">{error}</p>}
 
       <div className="flex gap-2">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="border rounded px-3 py-2"
-          disabled={busy}
-        />
-        <input
-          type="time"
-          value={time}
-          onChange={(e) => setTime(e.target.value)}
-          className="border rounded px-3 py-2"
-          disabled={busy}
-        />
-        <button
-          onClick={addSlot}
-          className="rounded bg-black text-white px-4 py-2 hover:bg-gray-800 disabled:opacity-50"
-          disabled={busy}
-        >
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="border rounded px-3 py-2" disabled={busy} />
+        <input type="time" value={time} onChange={e => setTime(e.target.value)} className="border rounded px-3 py-2" disabled={busy} />
+        <button onClick={addSlot} className="rounded bg-black text-white px-4 py-2 hover:bg-gray-800 disabled:opacity-50" disabled={busy}>
           Pridať
         </button>
       </div>
@@ -112,29 +96,15 @@ export default function AdminSlotsPage() {
             <tr key={s.id}>
               <td className="border px-2 py-1">{s.date}</td>
               <td className="border px-2 py-1">{s.time}</td>
-              <td className="border px-2 py-1">
-                {s.booked ? "Rezervované" : s.locked ? "Zamknuté" : "Voľné"}
-              </td>
+              <td className="border px-2 py-1">{s.booked ? "Rezervované" : s.locked ? "Zamknuté" : "Voľné"}</td>
               <td className="border px-2 py-1 space-x-1">
-                <button
-                  onClick={() => updateSlot(s.id, "lock")}
-                  className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50"
-                  disabled={busy}
-                >
+                <button onClick={() => updateSlot(s.id, "lock")} className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50" disabled={busy}>
                   Zamknúť
                 </button>
-                <button
-                  onClick={() => updateSlot(s.id, "unlock")}
-                  className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50"
-                  disabled={busy}
-                >
+                <button onClick={() => updateSlot(s.id, "unlock")} className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50" disabled={busy}>
                   Odomknúť
                 </button>
-                <button
-                  onClick={() => updateSlot(s.id, "delete")}
-                  className="px-2 py-1 border rounded text-red-600 hover:bg-gray-100 disabled:opacity-50"
-                  disabled={busy}
-                >
+                <button onClick={() => updateSlot(s.id, "delete")} className="px-2 py-1 border rounded text-red-600 hover:bg-gray-100 disabled:opacity-50" disabled={busy}>
                   Vymazať
                 </button>
               </td>
