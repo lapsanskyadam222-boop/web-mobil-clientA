@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean };
 
@@ -41,7 +41,7 @@ export default function AdminSlotsPage() {
     setTimeout(() => setSaved(false), 1200);
   }
 
-  // --- Jednotlivý slot (stále nechávam k dispozícii)
+  // --- 1 kus
   async function addSingle() {
     if (!date || !time) return alert("Zadaj dátum aj čas");
     setBusy(true); setError(null);
@@ -63,7 +63,7 @@ export default function AdminSlotsPage() {
     }
   }
 
-  // --- Batch (hromadné) pridanie časov pre vybraný dátum
+  // --- hromadne
   function addTimeToBatch() {
     if (!time) return;
     if (!/^\d{2}:\d{2}$/.test(time)) return alert("Čas musí byť vo formáte HH:MM");
@@ -96,7 +96,7 @@ export default function AdminSlotsPage() {
     }
   }
 
-  // --- Update/mazanie
+  // --- update / delete
   async function updateSlot(id: string, action: "lock" | "unlock" | "delete") {
     setBusy(true); setError(null);
     try {
@@ -133,6 +133,17 @@ export default function AdminSlotsPage() {
     }
   }
 
+  // --- Zoskupenie podľa dňa
+  const grouped = useMemo(() => {
+    const byDay = new Map<string, Slot[]>();
+    for (const s of slots) {
+      if (!byDay.has(s.date)) byDay.set(s.date, []);
+      byDay.get(s.date)!.push(s);
+    }
+    // zoradené podľa dátumu
+    return Array.from(byDay.entries()).sort(([d1], [d2]) => (d1 < d2 ? -1 : d1 > d2 ? 1 : 0));
+  }, [slots]);
+
   if (loading) return <main className="p-6">Načítavam sloty…</main>;
 
   return (
@@ -157,8 +168,20 @@ export default function AdminSlotsPage() {
       {/* Pridávanie slotov */}
       <div className="space-y-3 rounded-2xl border p-4">
         <div className="flex flex-wrap gap-2 items-center">
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="border rounded px-3 py-2" disabled={busy} />
-          <input type="time" value={time} onChange={e => setTime(e.target.value)} className="border rounded px-3 py-2" disabled={busy} />
+          <input
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="border rounded px-3 py-2"
+            disabled={busy}
+          />
+          <input
+            type="time"
+            value={time}
+            onChange={e => setTime(e.target.value)}
+            className="border rounded px-3 py-2"
+            disabled={busy}
+          />
           <button onClick={addSingle} className="rounded bg-black text-white px-4 py-2 hover:bg-gray-800 disabled:opacity-50" disabled={busy}>
             Pridať 1
           </button>
@@ -184,53 +207,71 @@ export default function AdminSlotsPage() {
         )}
       </div>
 
-      {/* Tabuľka slotov */}
-      <table className="w-full border text-sm">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border px-2 py-1">Dátum</th>
-            <th className="border px-2 py-1">Čas</th>
-            <th className="border px-2 py-1">Stav</th>
-            <th className="border px-2 py-1">Akcie</th>
-          </tr>
-        </thead>
-        <tbody>
-          {slots.map((s) => (
-            <tr key={s.id}>
-              <td className="border px-2 py-1">{s.date}</td>
-              <td className="border px-2 py-1">{s.time}</td>
-              <td className="border px-2 py-1">
-                <span className={`inline-block rounded px-2 py-0.5 text-xs mr-1 ${s.booked ? "bg-gray-900 text-white" : "bg-gray-200"}`}>
-                  {s.booked ? "Rezervované" : "Voľné"}
-                </span>
-                {s.locked && (
-                  <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">
-                    Zamknuté
-                  </span>
-                )}
-              </td>
-              <td className="border px-2 py-1 space-x-1">
-                <button onClick={() => updateSlot(s.id, "lock")} className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50" disabled={busy || s.locked}>
-                  Zamknúť
-                </button>
-                <button onClick={() => updateSlot(s.id, "unlock")} className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50" disabled={busy || !s.locked}>
-                  Odomknúť
-                </button>
-                <button onClick={() => updateSlot(s.id, "delete")} className="px-2 py-1 border rounded text-red-600 hover:bg-gray-100 disabled:opacity-50" disabled={busy}>
-                  Vymazať
-                </button>
-              </td>
+      {/* Zoskupená tabuľka slotov */}
+      <div className="w-full border rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border px-2 py-1 w-[35%] text-left">Dátum</th>
+              <th className="border px-2 py-1 w-[20%] text-left">Čas</th>
+              <th className="border px-2 py-1 w-[20%] text-left">Stav</th>
+              <th className="border px-2 py-1 w-[25%] text-left">Akcie</th>
             </tr>
-          ))}
-          {!slots.length && (
-            <tr>
-              <td colSpan={4} className="border px-2 py-3 text-center text-gray-600">
-                Zatiaľ žiadne sloty. Pridaj prvý hore.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {grouped.map(([day, daySlots]) => (
+              <Fragment key={day}>
+                {/* Nadpis dňa cez celý riadok */}
+                <tr>
+                  <td colSpan={4} className="border-t bg-gray-50 px-3 py-2 font-semibold">
+                    {new Date(day).toLocaleDateString("sk-SK", { day: "numeric", month: "numeric", year: "numeric" })}
+                  </td>
+                </tr>
+
+                {daySlots.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)).map((s) => (
+                  <tr key={s.id}>
+                    {/* prázdna bunka pre zarovnanie, dátum je v hlavičke dňa */}
+                    <td className="border px-2 py-1 text-gray-400">—</td>
+                    <td className="border px-2 py-1">{s.time}</td>
+                    <td className="border px-2 py-1">
+                      <span className={`inline-block rounded px-2 py-0.5 text-xs mr-1 ${s.booked ? "bg-gray-900 text-white" : "bg-gray-200"}`}>
+                        {s.booked ? "Rezervované" : "Voľné"}
+                      </span>
+                      {s.locked && (
+                        <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">
+                          Zamknuté
+                        </span>
+                      )}
+                    </td>
+                    <td className="border px-2 py-1 space-x-1">
+                      <button onClick={() => updateSlot(s.id, "lock")} className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50" disabled={busy || s.locked}>
+                        Zamknúť
+                      </button>
+                      <button onClick={() => updateSlot(s.id, "unlock")} className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50" disabled={busy || !s.locked}>
+                        Odomknúť
+                      </button>
+                      <button onClick={() => updateSlot(s.id, "delete")} className="px-2 py-1 border rounded text-red-600 hover:bg-gray-100 disabled:opacity-50" disabled={busy}>
+                        Vymazať
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+
+            {!grouped.length && (
+              <tr>
+                <td colSpan={4} className="border px-2 py-3 text-center text-gray-600">
+                  Zatiaľ žiadne sloty. Pridaj prvý hore (víkendy sú povolené).
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }
+
+/** Pomocný import pre <Fragment> */
+import { Fragment } from "react";
