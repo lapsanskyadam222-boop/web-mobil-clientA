@@ -23,7 +23,8 @@ export default function AdminSlotsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/slots", { cache: "no-store" });
+      // cache-buster, aby sme určite obišli akúkoľvek edge cache
+      const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: "no-store" });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Nepodarilo sa načítať sloty.");
       setSlots((json.slots || []).sort(sortByDateTime));
@@ -38,9 +39,10 @@ export default function AdminSlotsPage() {
 
   function flashSaved() {
     setSaved(true);
-    setTimeout(() => setSaved(false), 1200);
+    setTimeout(() => setSaved(false), 900);
   }
 
+  // --- 1 kus (bez re-fetchu: použijeme created z odpovede)
   async function addSingle() {
     if (!date || !time) return alert("Zadaj dátum aj čas");
     setBusy(true); setError(null);
@@ -52,7 +54,10 @@ export default function AdminSlotsPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Pridanie slotu zlyhalo.");
-      await loadSlots();
+      const created: Slot[] = json.created || [];
+      if (created.length) {
+        setSlots(prev => [...prev, ...created].sort(sortByDateTime));
+      }
       setTime("");
       flashSaved();
     } catch (e: any) {
@@ -62,6 +67,7 @@ export default function AdminSlotsPage() {
     }
   }
 
+  // --- hromadne (tiež bez re-fetchu: použijeme created)
   function addTimeToBatch() {
     if (!time) return;
     if (!/^\d{2}:\d{2}$/.test(time)) return alert("Čas musí byť vo formáte HH:MM");
@@ -84,7 +90,10 @@ export default function AdminSlotsPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Hromadné pridanie zlyhalo.");
-      await loadSlots();
+      const created: Slot[] = json.created || [];
+      if (created.length) {
+        setSlots(prev => [...prev, ...created].sort(sortByDateTime));
+      }
       setBatchTimes([]);
       flashSaved();
     } catch (e: any) {
@@ -94,6 +103,7 @@ export default function AdminSlotsPage() {
     }
   }
 
+  // --- update / delete (použijeme slots zo servera)
   async function updateSlot(id: string, action: "lock" | "unlock" | "delete") {
     setBusy(true); setError(null);
     try {
@@ -124,7 +134,6 @@ export default function AdminSlotsPage() {
       flashSaved();
     } catch (e: any) {
       alert(e?.message || "Vymazanie všetkých slotov zlyhalo.");
-      await loadSlots();
     } finally {
       setBusy(false);
     }
@@ -161,7 +170,7 @@ export default function AdminSlotsPage() {
 
       {error && <p className="text-red-600">{error}</p>}
 
-      {/* Pridávanie slotov (víkendy povolené – žiadne min/max obmedzenia) */}
+      {/* víkendy povolené – žiadne min/max */}
       <div className="space-y-3 rounded-2xl border p-4">
         <div className="flex flex-wrap gap-2 items-center">
           <input type="date" value={date} onChange={e => setDate(e.target.value)} className="border rounded px-3 py-2" disabled={busy} />
@@ -191,7 +200,6 @@ export default function AdminSlotsPage() {
         )}
       </div>
 
-      {/* Zoskupená tabuľka slotov */}
       <div className="w-full border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -205,29 +213,20 @@ export default function AdminSlotsPage() {
           <tbody>
             {grouped.map(([day, daySlots]) => (
               <Fragment key={day}>
-                {/* Nadpis dňa */}
                 <tr>
                   <td colSpan={4} className="border-t bg-gray-50 px-3 py-2 font-semibold">
                     {new Date(day).toLocaleDateString("sk-SK", { day: "numeric", month: "numeric", year: "numeric" })}
                   </td>
                 </tr>
-
-                {daySlots
-                  .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0))
-                  .map((s) => (
+                {daySlots.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)).map((s) => (
                   <tr key={s.id}>
-                    {/* prázdna bunka (žiadna čiarka) */}
                     <td className="border px-2 py-1">&nbsp;</td>
                     <td className="border px-2 py-1">{s.time}</td>
                     <td className="border px-2 py-1">
                       <span className={`inline-block rounded px-2 py-0.5 text-xs mr-1 ${s.booked ? "bg-gray-900 text-white" : "bg-gray-200"}`}>
                         {s.booked ? "Rezervované" : "Voľné"}
                       </span>
-                      {s.locked && (
-                        <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">
-                          Zamknuté
-                        </span>
-                      )}
+                      {s.locked && <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">Zamknuté</span>}
                     </td>
                     <td className="border px-2 py-1 space-x-1">
                       <button onClick={() => updateSlot(s.id, "lock")} className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50" disabled={busy || s.locked}>
@@ -244,7 +243,6 @@ export default function AdminSlotsPage() {
                 ))}
               </Fragment>
             ))}
-
             {!grouped.length && (
               <tr>
                 <td colSpan={4} className="border px-2 py-3 text-center text-gray-600">
