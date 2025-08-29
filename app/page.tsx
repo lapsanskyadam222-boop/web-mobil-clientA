@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+import Link from 'next/link';
 import Carousel from '@/components/Carousel';
 import { SiteContent } from '@/lib/types';
 import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
@@ -39,7 +40,7 @@ export default async function HomePage() {
           API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
         </p>
         <pre className="whitespace-pre-wrap text-xs opacity-60">
-          {result.status ? `HTTP ${result.status}\n` : ''}
+          {result.status ? `HTTP {result.status}\n` : ''}
           {result.error ?? ''}
         </pre>
       </main>
@@ -82,6 +83,23 @@ export default async function HomePage() {
         ) : (
           <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
         )}
+
+        {/* CTA tlačidlo z tvojho SVG assetu */}
+        <div className="mt-8 w-full flex justify-center">
+          <Link
+            href="/rezervacia"
+            aria-label="Rezervácie"
+            className="inline-block active:translate-y-[1px] transition"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/cta/rezervacie-btn.svg"
+              alt="Rezervácie"
+              className="h-16 w-auto select-none"
+              draggable={false}
+            />
+          </Link>
+        </div>
       </div>
     </main>
   );
