@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 
 type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean };
 
@@ -41,7 +41,6 @@ export default function AdminSlotsPage() {
     setTimeout(() => setSaved(false), 1200);
   }
 
-  // --- 1 kus
   async function addSingle() {
     if (!date || !time) return alert("Zadaj dátum aj čas");
     setBusy(true); setError(null);
@@ -63,7 +62,6 @@ export default function AdminSlotsPage() {
     }
   }
 
-  // --- hromadne
   function addTimeToBatch() {
     if (!time) return;
     if (!/^\d{2}:\d{2}$/.test(time)) return alert("Čas musí byť vo formáte HH:MM");
@@ -96,7 +94,6 @@ export default function AdminSlotsPage() {
     }
   }
 
-  // --- update / delete
   async function updateSlot(id: string, action: "lock" | "unlock" | "delete") {
     setBusy(true); setError(null);
     try {
@@ -133,14 +130,13 @@ export default function AdminSlotsPage() {
     }
   }
 
-  // --- Zoskupenie podľa dňa
+  // zoskupenie podľa dňa
   const grouped = useMemo(() => {
     const byDay = new Map<string, Slot[]>();
     for (const s of slots) {
       if (!byDay.has(s.date)) byDay.set(s.date, []);
       byDay.get(s.date)!.push(s);
     }
-    // zoradené podľa dátumu
     return Array.from(byDay.entries()).sort(([d1], [d2]) => (d1 < d2 ? -1 : d1 > d2 ? 1 : 0));
   }, [slots]);
 
@@ -165,23 +161,11 @@ export default function AdminSlotsPage() {
 
       {error && <p className="text-red-600">{error}</p>}
 
-      {/* Pridávanie slotov */}
+      {/* Pridávanie slotov (víkendy povolené – žiadne min/max obmedzenia) */}
       <div className="space-y-3 rounded-2xl border p-4">
         <div className="flex flex-wrap gap-2 items-center">
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            className="border rounded px-3 py-2"
-            disabled={busy}
-          />
-          <input
-            type="time"
-            value={time}
-            onChange={e => setTime(e.target.value)}
-            className="border rounded px-3 py-2"
-            disabled={busy}
-          />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="border rounded px-3 py-2" disabled={busy} />
+          <input type="time" value={time} onChange={e => setTime(e.target.value)} className="border rounded px-3 py-2" disabled={busy} />
           <button onClick={addSingle} className="rounded bg-black text-white px-4 py-2 hover:bg-gray-800 disabled:opacity-50" disabled={busy}>
             Pridať 1
           </button>
@@ -221,17 +205,19 @@ export default function AdminSlotsPage() {
           <tbody>
             {grouped.map(([day, daySlots]) => (
               <Fragment key={day}>
-                {/* Nadpis dňa cez celý riadok */}
+                {/* Nadpis dňa */}
                 <tr>
                   <td colSpan={4} className="border-t bg-gray-50 px-3 py-2 font-semibold">
                     {new Date(day).toLocaleDateString("sk-SK", { day: "numeric", month: "numeric", year: "numeric" })}
                   </td>
                 </tr>
 
-                {daySlots.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)).map((s) => (
+                {daySlots
+                  .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0))
+                  .map((s) => (
                   <tr key={s.id}>
-                    {/* prázdna bunka pre zarovnanie, dátum je v hlavičke dňa */}
-                    <td className="border px-2 py-1 text-gray-400">—</td>
+                    {/* prázdna bunka (žiadna čiarka) */}
+                    <td className="border px-2 py-1">&nbsp;</td>
                     <td className="border px-2 py-1">{s.time}</td>
                     <td className="border px-2 py-1">
                       <span className={`inline-block rounded px-2 py-0.5 text-xs mr-1 ${s.booked ? "bg-gray-900 text-white" : "bg-gray-200"}`}>
@@ -272,6 +258,3 @@ export default function AdminSlotsPage() {
     </main>
   );
 }
-
-/** Pomocný import pre <Fragment> */
-import { Fragment } from "react";
