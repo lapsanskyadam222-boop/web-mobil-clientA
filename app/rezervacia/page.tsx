@@ -1,10 +1,13 @@
 // app/rezervacia/page.tsx
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean; };
 
 export default function RezervaciaPage() {
+  const router = useRouter();
+
   const [slots, setSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,9 +52,11 @@ export default function RezervaciaPage() {
     [activeDay, slots]
   );
 
+  const phoneOk = phone.replace(/\D/g, "").length >= 9;
+
   async function submitReservation() {
-    if (!selectedSlot || !name || !phone) {
-      alert("Prosím vyber si termín a vyplň meno + telefón.");
+    if (!selectedSlot || !name || !phoneOk) {
+      alert("Prosím vyber si termín a vyplň meno + platný telefón.");
       return;
     }
     try {
@@ -63,13 +68,9 @@ export default function RezervaciaPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Rezervácia zlyhala.");
-      alert("Rezervácia odoslaná. Ďakujem! Ozvem sa ti.");
-      const r = await fetch("/api/slots", { cache: "no-store" });
-      const j = await r.json();
-      setSlots(j.slots || []);
-      setSelectedSlot(null);
-      setName("");
-      setPhone("");
+
+      // presmeruj na success stránku
+      router.push("/rezervacia/success");
     } catch (e: any) {
       alert(e?.message || "Chyba pri odosielaní.");
     } finally {
@@ -84,6 +85,7 @@ export default function RezervaciaPage() {
     <main className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-2xl font-bold mb-6">Rezervácia</h1>
 
+      {/* Prepínač dní */}
       <div className="flex flex-wrap gap-2 mb-6">
         {days.map(d => (
           <button
@@ -97,6 +99,7 @@ export default function RezervaciaPage() {
         ))}
       </div>
 
+      {/* Sloty */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-8">
         {daySlots.length === 0 && <p className="text-sm text-gray-600">Žiadne voľné časy pre tento deň.</p>}
         {daySlots.map(s => (
@@ -110,6 +113,7 @@ export default function RezervaciaPage() {
         ))}
       </div>
 
+      {/* Formulár */}
       <div className="rounded-2xl border p-4 space-y-3">
         <div className="grid gap-2">
           <label className="text-sm font-medium">Meno</label>
@@ -118,13 +122,16 @@ export default function RezervaciaPage() {
         <div className="grid gap-2">
           <label className="text-sm font-medium">Telefón</label>
           <input className="rounded-lg border px-3 py-2" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+421 ..." />
+          {phone && !phoneOk && (
+            <p className="text-xs text-red-600">Zadaj platný telefón (min. 9 číslic).</p>
+          )}
         </div>
 
         <div className="pt-2">
           <button
             onClick={submitReservation}
             className="w-full rounded-xl bg-black px-6 py-3 text-white hover:bg-gray-800 transition disabled:opacity-50"
-            disabled={!selectedSlot || saving}
+            disabled={!selectedSlot || saving || !name || !phoneOk}
           >
             {saving ? "Odosielam…" : selectedSlot ? `Rezervovať ${selectedSlot.date} ${selectedSlot.time}` : "Vyber si termín"}
           </button>
