@@ -9,6 +9,7 @@ function toISO(d: Date) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pa
 const wd = ["po","ut","st","št","pia","so","ne"];
 const monthLabel = (d: Date) => d.toLocaleDateString("sk-SK", { month: "long", year: "numeric" });
 
+// pondelok = začiatok týždňa
 function startOfWeekMon(d: Date) {
   const day = d.getDay(); // 0=ne
   const diff = (day === 0 ? -6 : 1 - day);
@@ -17,16 +18,21 @@ function startOfWeekMon(d: Date) {
   out.setHours(0,0,0,0);
   return out;
 }
+
+// vráti mriežku pre daný mesiac (7 stĺpcov, riadky = týždne)
 function buildMonthGrid(year: number, monthIdx0: number) {
   const first = new Date(year, monthIdx0, 1);
   const last  = new Date(year, monthIdx0 + 1, 0);
   const firstCell = startOfWeekMon(first);
   const weeks: (Date | null)[][] = [];
   let cur = new Date(firstCell);
+
+  // max 6 týždňov, dopĺňame po nedeľu
   while (true) {
     const row: (Date | null)[] = [];
     for (let i=0;i<7;i++) {
       const cell = new Date(cur);
+      // mimo mesiaca zobrazíme prázdnu dlaždicu
       row.push(cell < first || cell > last ? null : cell);
       cur.setDate(cur.getDate()+1);
     }
@@ -35,14 +41,24 @@ function buildMonthGrid(year: number, monthIdx0: number) {
   }
   return weeks;
 }
+
 function formatDateSK(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString("sk-SK", { day:"numeric", month:"numeric", year:"numeric" });
+}
+function cellTop(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString("sk-SK", { day: "numeric", month: "numeric" }) + ".";
+}
+function cellBottom(iso: string) {
+  const d = new Date(iso);
+  return d.getFullYear().toString();
 }
 
 export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
   const todayIso = new Date().toISOString().slice(0,10);
 
+  // len voľné, neuzamknuté a v budúcnosti
   const available = useMemo(
     () => (slots||[])
       .filter(s => s.date >= todayIso && !s.locked && !s.booked)
@@ -53,8 +69,8 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
   if (!available.length) {
     return (
       <main className="mx-auto max-w-xl p-6">
-        <h1 className="mb-4 text-2xl font-bold">Rezervácia</h1>
-        <p className="text-sm opacity-70">Momentálne nie sú dostupné žiadne termíny. Skúste neskôr.</p>
+        <h1 className="mb-4 text-2xl font-bold text-center">Rezervácia</h1>
+        <p className="text-sm opacity-70 text-center">Momentálne nie sú dostupné žiadne termíny. Skúste neskôr.</p>
       </main>
     );
   }
@@ -74,42 +90,55 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
     <main className="mx-auto max-w-xl p-6">
       <h1 className="mb-4 text-2xl font-bold">Rezervácia</h1>
 
-      <div className="mb-2 flex items-center justify-between">
-        <button onClick={prevMonth} className="rounded border px-2 py-1 hover:bg-gray-50" aria-label="Predchádzajúci mesiac">‹</button>
-        <div className="text-sm font-semibold">{monthLabel(monthAnchor)}</div>
-        <button onClick={nextMonth} className="rounded border px-2 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
-      </div>
+      {/* Panel kalendára */}
+      <div className="w-full max-w-md">
+        {/* Hlavička mesiaca */}
+        <div className="mb-3 flex items-center justify-between">
+          <button onClick={prevMonth} className="rounded border px-2 py-1 hover:bg-gray-50" aria-label="Predchádzajúci mesiac">‹</button>
+          <div className="text-base font-semibold capitalize">{monthLabel(monthAnchor)}</div>
+          <button onClick={nextMonth} className="rounded border px-2 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
+        </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1">
-        {wd.map(w => <div key={w} className="py-1 font-medium opacity-70">{w}</div>)}
-      </div>
+        {/* Názvy dní */}
+        <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1">
+          {wd.map(w => <div key={w} className="py-1 font-semibold opacity-70 uppercase">{w}</div>)}
+        </div>
 
-      <div className="grid grid-cols-7 gap-1 mb-4">
-        {weeks.flatMap((row,ri)=>
-          row.map((cell,ci)=>{
-            if (!cell) return <div key={`${ri}-${ci}`} className="aspect-square rounded border border-dashed opacity-30" />;
-            const iso = toISO(cell);
-            const isAv = availableDates.has(iso);
-            const isActive = iso === activeDate;
-            const isPast = iso < todayIso;
-            const base = "aspect-square rounded border text-sm flex items-center justify-center";
-            const state = isActive ? "bg-black text-white border-black"
-              : isAv && !isPast ? "hover:bg-gray-100 cursor-pointer"
-              : "opacity-40";
-            return (
-              <button
-                type="button"
-                key={iso}
-                disabled={!isAv || isPast}
-                onClick={()=> setActiveDate(iso)}
-                className={`${base} ${state}`}
-                title={formatDateSK(iso)}
-              >
-                <div className="leading-none"><div>{cell.getDate()}</div></div>
-              </button>
-            );
-          })
-        )}
+        {/* Mriežka – každý riadok = týždeň, 7 stĺpcov */}
+        <div className="grid grid-cols-7 gap-1 mb-5">
+          {weeks.flatMap((row,ri)=>
+            row.map((cell,ci)=>{
+              if (!cell) {
+                return <div key={`${ri}-${ci}`} className="rounded border border-dashed opacity-20 h-16 md:h-20" />;
+              }
+              const iso = toISO(cell);
+              const isAv = availableDates.has(iso);
+              const isActive = iso === activeDate;
+              const isPast = iso < todayIso;
+
+              const base = "rounded border text-sm flex flex-col items-center justify-center h-16 md:h-20";
+              const state = isActive
+                ? "bg-black text-white border-black"
+                : isAv && !isPast
+                  ? "bg-white hover:bg-gray-100 cursor-pointer"
+                  : "bg-gray-100 text-gray-400";
+
+              return (
+                <button
+                  type="button"
+                  key={iso}
+                  disabled={!isAv || isPast}
+                  onClick={()=> setActiveDate(iso)}
+                  className={`${base} ${state}`}
+                  title={formatDateSK(iso)}
+                >
+                  <div className="leading-none">{cellTop(iso)}</div>
+                  <div className="leading-none text-[11px] opacity-80">{cellBottom(iso)}</div>
+                </button>
+              );
+            })
+          )}
+        </div>
       </div>
 
       <ReservationForm date={activeDate} daySlots={daySlots} />
@@ -120,7 +149,7 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
 function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] }) {
   const [slotId, setSlotId] = useState<string>(daySlots[0]?.id ?? "");
   const [name, setName]   = useState("");
-  const [email, setEmail] = useState("");   // povinné
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
   // ak sa zmení deň, nastav prvý dostupný slot
