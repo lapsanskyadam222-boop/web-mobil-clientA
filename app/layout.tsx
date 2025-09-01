@@ -1,5 +1,11 @@
 import './globals.css';
 import type { ReactNode } from 'react';
+import { Inter } from 'next/font/google';
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+});
 
 export const metadata = {
   title: 'Web – logo, carousel, text',
@@ -14,7 +20,7 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="sk">
+    <html lang="sk" className={inter.className}>
       <body className="min-h-dvh bg-white text-gray-900 antialiased">
         <div className="mx-auto max-w-screen-sm p-4">{children}</div>
       </body>
