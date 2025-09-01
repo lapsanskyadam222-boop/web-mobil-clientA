@@ -4,59 +4,46 @@ import { useMemo, useState } from "react";
 
 type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean };
 
+const WD = ["po","ut","st","št","pia","so","ne"];
+const monthLabel = (d: Date) =>
+  d.toLocaleDateString("sk-SK", { month: "long", year: "numeric" });
+
 function pad(n: number) { return n < 10 ? `0${n}` : `${n}`; }
-function toISO(d: Date) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
-const wd = ["po","ut","st","št","pia","so","ne"];
-const monthLabel = (d: Date) => d.toLocaleDateString("sk-SK", { month: "long", year: "numeric" });
+function toISO(d: Date)  { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 
-function startOfWeekMon(d: Date) {
-  const day = d.getDay(); // 0=ne
+function buildCalendar(year: number, month0: number) {
+  // prvý a posledný deň mesiaca
+  const first = new Date(year, month0, 1);
+  const last  = new Date(year, month0 + 1, 0);
+
+  // chceme začať v mriežke od pondelka
+  const start = new Date(first);
+  const day = start.getDay(); // 0=ne
   const diff = (day === 0 ? -6 : 1 - day);
-  const out = new Date(d);
-  out.setDate(out.getDate() + diff);
-  out.setHours(0,0,0,0);
-  return out;
-}
+  start.setDate(start.getDate() + diff);
+  start.setHours(0,0,0,0);
 
-// vráti pole týždňov; každý týždeň je pole 7 položiek (Date | null)
-function buildMonthWeeks(year: number, monthIdx0: number) {
-  const first = new Date(year, monthIdx0, 1);
-  const last  = new Date(year, monthIdx0 + 1, 0);
-  const firstCell = startOfWeekMon(first);
-  const weeks: (Date | null)[][] = [];
-  let cur = new Date(firstCell);
-
-  while (true) {
-    const row: (Date | null)[] = [];
-    for (let i=0;i<7;i++) {
-      const cell = new Date(cur);
-      row.push(cell < first || cell > last ? null : cell);
-      cur.setDate(cur.getDate()+1);
-    }
-    weeks.push(row);
-    if (weeks.length > 6 || (row[6] && row[6]! >= last)) break;
+  // 6 týždňov = 42 buniek (dosť pre hociktorý mesiac)
+  const cells: { date: Date; inMonth: boolean }[] = [];
+  for (let i=0;i<42;i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    cells.push({ date: d, inMonth: d >= first && d <= last });
   }
-  return weeks;
+  return cells;
 }
 
-function formatDateSK(iso: string) {
+function fmtLong(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString("sk-SK", { day:"numeric", month:"numeric", year:"numeric" });
-}
-function cellTop(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString("sk-SK", { day: "numeric", month: "numeric" }) + ".";
-}
-function cellBottom(iso: string) {
-  const d = new Date(iso);
-  return d.getFullYear().toString();
 }
 
 export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
   const todayIso = new Date().toISOString().slice(0,10);
 
+  // všetky dostupné sloty (budúcnosť, nie locked/booked)
   const available = useMemo(
-    () => (slots||[])
+    () => (slots ?? [])
       .filter(s => s.date >= todayIso && !s.locked && !s.booked)
       .sort((a,b)=> (a.date===b.date ? (a.time<b.time?-1:1) : (a.date<b.date?-1:1))),
     [slots, todayIso]
@@ -71,16 +58,24 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
     );
   }
 
+  // stav mesiaca a aktívneho dňa
   const firstDate = available[0].date;
-  const [monthAnchor, setMonthAnchor] = useState(() => { const d = new Date(firstDate); d.setDate(1); d.setHours(0,0,0,0); return d; });
+  const [anchor, setAnchor] = useState(() => {
+    const d = new Date(firstDate);
+    d.setDate(1); d.setHours(0,0,0,0);
+    return d;
+  });
   const [activeDate, setActiveDate] = useState(firstDate);
 
-  const weeks = useMemo(() => buildMonthWeeks(monthAnchor.getFullYear(), monthAnchor.getMonth()), [monthAnchor]);
+  // mriežka buniek
+  const cells = useMemo(() => buildCalendar(anchor.getFullYear(), anchor.getMonth()), [anchor]);
+
+  // dni, ktoré majú aspoň jeden slot
   const availableDates = useMemo(() => new Set(available.map(s => s.date)), [available]);
   const daySlots = useMemo(() => available.filter(s => s.date === activeDate), [available, activeDate]);
 
-  function prevMonth() { const d = new Date(monthAnchor); d.setMonth(d.getMonth()-1); setMonthAnchor(d); }
-  function nextMonth() { const d = new Date(monthAnchor); d.setMonth(d.getMonth()+1); setMonthAnchor(d); }
+  function prevMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()-1); setAnchor(d); }
+  function nextMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()+1); setAnchor(d); }
 
   return (
     <main className="mx-auto max-w-lg p-6">
@@ -90,52 +85,45 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
       <div className="w-full">
         {/* Hlavička mesiaca */}
         <div className="mb-3 flex items-center justify-between">
-          <button onClick={prevMonth} className="rounded border px-2 py-1 hover:bg-gray-50" aria-label="Predchádzajúci mesiac">‹</button>
-          <div className="text-base font-semibold capitalize">{monthLabel(monthAnchor)}</div>
-          <button onClick={nextMonth} className="rounded border px-2 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
+          <button onClick={prevMonth} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Predchádzajúci mesiac">‹</button>
+          <div className="text-base font-semibold capitalize">{monthLabel(anchor)}</div>
+          <button onClick={nextMonth} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
         </div>
 
-        {/* Názvy dní v jednom riadku */}
+        {/* Názvy dní */}
         <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1">
-          {wd.map(w => <div key={w} className="py-1 font-semibold opacity-70 uppercase">{w}</div>)}
+          {WD.map(w => <div key={w} className="py-2 font-semibold opacity-70 uppercase">{w}</div>)}
         </div>
 
-        {/* Riadky = týždne */}
-        <div className="space-y-1 mb-5">
-          {weeks.map((row, rowIdx) => (
-            <div key={rowIdx} className="grid grid-cols-7 gap-1">
-              {row.map((cell, colIdx) => {
-                if (!cell) {
-                  return <div key={`${rowIdx}-${colIdx}`} className="rounded border border-dashed opacity-20 h-16 md:h-20" />;
-                }
-                const iso = toISO(cell);
-                const isAv = availableDates.has(iso);
-                const isActive = iso === activeDate;
-                const isPast = iso < todayIso;
+        {/* Mriežka 7×6 */}
+        <div className="grid grid-cols-7 gap-1 mb-6">
+          {cells.map(({ date, inMonth }, idx) => {
+            const iso = toISO(date);
+            const isAv   = availableDates.has(iso);
+            const isPast = iso < todayIso;
+            const isAct  = iso === activeDate;
 
-                const base = "rounded border text-sm flex flex-col items-center justify-center h-16 md:h-20";
-                const state = isActive
-                  ? "bg-black text-white border-black"
-                  : isAv && !isPast
-                    ? "bg-white hover:bg-gray-100 cursor-pointer"
-                    : "bg-gray-100 text-gray-400";
+            const base = "h-14 md:h-16 rounded border flex items-center justify-center";
+            let cls =
+              inMonth
+                ? (isAct ? "bg-black text-white border-black"
+                         : isAv && !isPast ? "bg-white hover:bg-gray-100 cursor-pointer"
+                                           : "bg-gray-100 text-gray-400")
+                : "bg-gray-50 text-gray-300";
 
-                return (
-                  <button
-                    type="button"
-                    key={iso}
-                    disabled={!isAv || isPast}
-                    onClick={() => setActiveDate(iso)}
-                    className={`${base} ${state}`}
-                    title={formatDateSK(iso)}
-                  >
-                    <div className="leading-none">{cellTop(iso)}</div>
-                    <div className="leading-none text-[11px] opacity-80">{cellBottom(iso)}</div>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+            return (
+              <button
+                type="button"
+                key={idx}
+                disabled={!inMonth || !isAv || isPast}
+                onClick={()=> setActiveDate(iso)}
+                title={fmtLong(iso)}
+                className={`${base} ${cls}`}
+              >
+                <span className="text-sm">{date.getDate()}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -181,14 +169,14 @@ function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] })
     }
   }
 
-  function formatDateSK(iso: string) {
+  function fmt(iso: string) {
     const d = new Date(iso);
-    return d.toLocaleDateString("sk-SK", { day:"numeric", month:"numeric", year:"numeric" });
+    return d.toLocaleDateString("sk-SK",{day:"numeric",month:"numeric",year:"numeric"});
   }
 
   return (
     <form onSubmit={submit} className="w-full rounded border p-3 space-y-3">
-      <div className="text-xs opacity-70">Dátum: <strong>{formatDateSK(date)}</strong></div>
+      <div className="text-xs opacity-70">Dátum: <strong>{fmt(date)}</strong></div>
 
       <label className="block">
         <span className="block text-xs mb-1">Čas</span>
@@ -218,7 +206,7 @@ function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] })
         Vybrať si termín
       </button>
 
-      <p className="text-xs opacity-70">* Dni sa berú priamo zo slotov; víkendy fungujú.</p>
+      <p className="text-xs opacity-70">* Klikateľné sú len dni, ktoré majú voľné termíny.</p>
     </form>
   );
 }
