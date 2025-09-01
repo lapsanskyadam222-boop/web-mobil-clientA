@@ -11,23 +11,30 @@ const monthLabel = (d: Date) =>
 function pad(n: number) { return n < 10 ? `0${n}` : `${n}`; }
 function toISO(d: Date)  { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 
-function buildCalendar(year: number, month0: number) {
+function buildCalendarWeeks(year: number, month0: number) {
   const first = new Date(year, month0, 1);
   const last  = new Date(year, month0 + 1, 0);
 
+  // začneme na pondelku týždňa, kde leží "first"
   const start = new Date(first);
-  const day = start.getDay(); // 0=ne
-  const diff = (day === 0 ? -6 : 1 - day); // zarovnanie na pondelok
+  const day = start.getDay(); // 0=ne, 1=po...
+  const diff = (day === 0 ? -6 : 1 - day);
   start.setDate(start.getDate() + diff);
   start.setHours(0,0,0,0);
 
+  // vyrobíme 42 buniek (6 týždňov), potom "chunk" po 7
   const cells: { date: Date; inMonth: boolean }[] = [];
   for (let i=0;i<42;i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
     cells.push({ date: d, inMonth: d >= first && d <= last });
   }
-  return cells;
+
+  const weeks: { date: Date; inMonth: boolean }[][] = [];
+  for (let i=0;i<cells.length; i+=7) weeks.push(cells.slice(i, i+7));
+
+  // odfiltrujeme celé týždne, ktoré nemajú žiaden deň z aktuálneho mesiaca
+  return weeks.filter(week => week.some(c => c.inMonth));
 }
 
 function fmtLong(iso: string) {
@@ -58,7 +65,7 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
   const [anchor, setAnchor] = useState(() => { const d = new Date(firstDate); d.setDate(1); d.setHours(0,0,0,0); return d; });
   const [activeDate, setActiveDate] = useState(firstDate);
 
-  const cells = useMemo(() => buildCalendar(anchor.getFullYear(), anchor.getMonth()), [anchor]);
+  const weeks = useMemo(() => buildCalendarWeeks(anchor.getFullYear(), anchor.getMonth()), [anchor]);
 
   const availableDates = useMemo(() => new Set(available.map(s => s.date)), [available]);
   const daySlots = useMemo(() => available.filter(s => s.date === activeDate), [available, activeDate]);
@@ -66,8 +73,9 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
   function prevMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()-1); setAnchor(d); }
   function nextMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()+1); setAnchor(d); }
 
+  // nezávislé od Tailwindu, zaručí 7 stĺpcov
   const grid7: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 };
-  const cellH = 56;
+  const cellH = 56; // px výška bunky
 
   return (
     <main className="mx-auto max-w-lg p-6">
@@ -88,37 +96,41 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
           ))}
         </div>
 
-        {/* Mriežka 7×6 */}
-        <div style={grid7} className="mb-8">
-          {cells.map(({ date, inMonth }, idx) => {
-            const iso = toISO(date);
-            const isAv   = availableDates.has(iso);
-            const isPast = iso < todayIso;
-            const isAct  = iso === activeDate;
+        {/* Týždne v mesiaci */}
+        <div style={{ display: "grid", rowGap: 6, marginBottom: 32 }}>
+          {weeks.map((week, wi) => (
+            <div key={wi} style={grid7}>
+              {week.map(({ date, inMonth }, di) => {
+                const iso = toISO(date);
+                const isAv   = availableDates.has(iso);
+                const isPast = iso < todayIso;
+                const isAct  = iso === activeDate;
 
-            const common = "rounded border flex items-center justify-center select-none";
-            const style: React.CSSProperties = { height: cellH };
+                const common = "rounded border flex items-center justify-center select-none";
+                const style: React.CSSProperties = { height: cellH };
 
-            let cls = "";
-            if (!inMonth) cls = "bg-gray-50 text-gray-300";
-            else if (isAct) cls = "bg-black text-white border-black";
-            else if (isAv && !isPast) cls = "bg-white hover:bg-gray-100 cursor-pointer";
-            else cls = "bg-gray-100 text-gray-400";
+                let cls = "";
+                if (!inMonth) cls = "bg-gray-50 text-gray-300";
+                else if (isAct) cls = "bg-black text-white border-black";
+                else if (isAv && !isPast) cls = "bg-white hover:bg-gray-100 cursor-pointer";
+                else cls = "bg-gray-100 text-gray-400";
 
-            return (
-              <button
-                type="button"
-                key={idx}
-                disabled={!inMonth || !isAv || isPast}
-                onClick={()=> setActiveDate(iso)}
-                title={fmtLong(iso)}
-                className={`${common} ${cls}`}
-                style={style}
-              >
-                <span className="text-sm">{date.getDate()}</span>
-              </button>
-            );
-          })}
+                return (
+                  <button
+                    type="button"
+                    key={di}
+                    disabled={!inMonth || !isAv || isPast}
+                    onClick={()=> setActiveDate(iso)}
+                    title={fmtLong(iso)}
+                    className={`${common} ${cls}`}
+                    style={style}
+                  >
+                    <span className="text-sm">{date.getDate()}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -133,6 +145,7 @@ function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] })
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
+  // keď sa zmení deň a doterajší slot už neexistuje, prepni na prvý voľný
   if (daySlots.length && !daySlots.find(s => s.id === slotId)) {
     setSlotId(daySlots[0].id);
   }
