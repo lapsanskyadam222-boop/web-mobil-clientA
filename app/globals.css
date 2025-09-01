@@ -1,15 +1,15 @@
 :root {
-  --logoH: clamp(64px, 12vh, 120px);          /* základná výška loga (PC/tablet) */
-  --logoGapBottom: calc(var(--logoH) * 0.12); /* spodná medzera = 12 % výšky loga */
-  --logoGapTop: calc(var(--logoGapBottom) * 0.66); /* horná medzera = 2/3 spodnej */
+  --logoH: clamp(64px, 12vh, 120px);          
+  --logoGapBottom: calc(var(--logoH) * 0.096); /* predtým 0.12 → mínus 1/5 */
+  --logoGapTop: calc(var(--logoGapBottom) * 0.44); /* predtým 0.66 → mínus 1/3 */
 }
 
 /* 📱 Mobilné zariadenia */
 @media (max-width: 768px) {
   :root {
     --logoH: clamp(70px, 13.2vh, 132px);      
-    --logoGapBottom: calc(var(--logoH) * 0.12);
-    --logoGapTop: calc(var(--logoGapBottom) * 0.66);
+    --logoGapBottom: calc(var(--logoH) * 0.096);
+    --logoGapTop: calc(var(--logoGapBottom) * 0.44);
   }
 }
 
