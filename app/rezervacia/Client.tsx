@@ -66,9 +66,8 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
   function prevMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()-1); setAnchor(d); }
   function nextMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()+1); setAnchor(d); }
 
-  // štýly, ktoré nebudú závislé od Tailwind grid utilít
   const grid7: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 };
-  const cellH = 56; // px výška buniek (mobil/desktop pokojne doladíme)
+  const cellH = 56;
 
   return (
     <main className="mx-auto max-w-lg p-6">
@@ -82,7 +81,7 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
           <button onClick={nextMonth} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
         </div>
 
-        {/* Názvy dní – 1 riadok, 7 stĺpcov */}
+        {/* Názvy dní */}
         <div style={grid7} className="text-center text-xs mb-1">
           {WD.map(w => (
             <div key={w} className="py-2 font-semibold opacity-70 uppercase">{w}</div>
@@ -90,7 +89,7 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
         </div>
 
         {/* Mriežka 7×6 */}
-        <div style={grid7} className="mb-6">
+        <div style={grid7} className="mb-8">
           {cells.map(({ date, inMonth }, idx) => {
             const iso = toISO(date);
             const isAv   = availableDates.has(iso);
