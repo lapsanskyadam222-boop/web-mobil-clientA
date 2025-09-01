@@ -1,23 +1,24 @@
 :root {
   --logoH: clamp(64px, 12vh, 120px);          /* základná výška loga (PC/tablet) */
-  --logoGapBottom: calc(var(--logoH) * 0.3);  /* spodná medzera = 30 % výšky loga */
-  --logoGapTop: calc(var(--logoGapBottom) * 0.66); /* horná medzera = 2/3 spodnej */
+  --logoGapBottom: calc(var(--logoH) * 0.2);  /* spodná medzera = 20 % výšky loga (bolo 30 %) */
+  --logoGapTop: calc(var(--logoGapBottom) * 0.44); /* horná medzera = 44 % spodnej (bolo 66 %) */
 }
 
 /* 📱 Mobilné zariadenia */
 @media (max-width: 768px) {
   :root {
     --logoH: clamp(70px, 13.2vh, 132px);      /* +10 % oproti PC */
-    --logoGapBottom: calc(var(--logoH) * 0.3);
-    --logoGapTop: calc(var(--logoGapBottom) * 0.66);
+    --logoGapBottom: calc(var(--logoH) * 0.2);
+    --logoGapTop: calc(var(--logoGapBottom) * 0.44);
   }
 }
 
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
-
-body { margin: 0; }
-
+body { 
+  margin: 0; 
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; 
+}
 .mx-auto { margin-left: auto; margin-right: auto; }
 .max-w-screen-sm { max-width: 640px; }
 .p-4 { padding: 1rem; }
@@ -61,12 +62,3 @@ body { margin: 0; }
 .min-w-0 { min-width: 0; }
 .object-contain { object-fit: contain; }
 .mt-2 { margin-top: .5rem; }
-
-/* 👉 Nový doplnok: nech všetky ovládacie prvky dedia Inter */
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
-}
