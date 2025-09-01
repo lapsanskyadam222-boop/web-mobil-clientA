@@ -1,105 +1,138 @@
-// app/page.tsx
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// app/rezervacia/page.tsx
+"use client";
+import { useEffect, useMemo, useState } from "react";
 
-import Link from 'next/link';
-import Carousel from '@/components/Carousel';
-import { SiteContent } from '@/lib/types';
-import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
+type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean; };
 
-async function getContent(): Promise<{
-  ok: boolean;
-  data?: SiteContent;
-  error?: string;
-  status?: number;
-}> {
-  try {
-    const base = getBaseUrlServer();
-    const url = `${base}/api/content`;
+export default function RezervaciaPage() {
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) {
-      return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
+  const [activeDay, setActiveDay] = useState<string>("");
+  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch("/api/slots", { cache: "no-store" });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || "Nepodarilo sa načítať sloty.");
+        if (!mounted) return;
+        setSlots(json.slots || []);
+        const firstDay = (json.slots || [])
+          .map((s: Slot) => s.date)
+          .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+          .sort()[0];
+        setActiveDay(firstDay || "");
+      } catch (e: any) {
+        setError(e?.message || "Chyba pri načítavaní slotov.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => { mounted = false };
+  }, []);
+
+  const days = useMemo(() => {
+    const set = new Set(slots.map(s => s.date));
+    return Array.from(set).sort();
+  }, [slots]);
+
+  const daySlots = useMemo(
+    () => slots.filter(s => s.date === activeDay && !s.locked && !s.booked),
+    [activeDay, slots]
+  );
+
+  async function submitReservation() {
+    if (!selectedSlot || !name || !phone) {
+      alert("Prosím vyber si termín a vyplň meno + telefón.");
+      return;
     }
-
-    const json = (await res.json()) as SiteContent;
-    return { ok: true, data: json };
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? 'Unknown fetch error' };
-  }
-}
-
-export default async function HomePage() {
-  const result = await getContent();
-
-  if (!result.ok) {
-    return (
-      <main className="mx-auto max-w-2xl p-6">
-        <h1 className="mb-2 text-xl font-semibold">Načítanie obsahu zlyhalo</h1>
-        <p className="mb-2 text-sm opacity-70">
-          API nevrátilo žiadne dáta. Skús obnoviť stránku alebo pozri <code>/api/content</code>.
-        </p>
-        <pre className="whitespace-pre-wrap text-xs opacity-60">
-          {result.status ? `HTTP {result.status}\n` : ''}
-          {result.error ?? ''}
-        </pre>
-      </main>
-    );
+    try {
+      setSaving(true);
+      const res = await fetch("/api/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slotId: selectedSlot.id, name, phone }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Rezervácia zlyhala.");
+      alert("Rezervácia odoslaná. Ďakujem! Ozvem sa ti.");
+      const r = await fetch("/api/slots", { cache: "no-store" });
+      const j = await r.json();
+      setSlots(j.slots || []);
+      setSelectedSlot(null);
+      setName("");
+      setPhone("");
+    } catch (e: any) {
+      alert(e?.message || "Chyba pri odosielaní.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const data = result.data!;
-  const logoUrl = data.logoUrl ?? null;
-  const images = Array.isArray(data.carousel) ? data.carousel : [];
-  const text = data.text ?? '';
+  if (loading) return <main className="mx-auto max-w-3xl px-4 py-8">Načítavam…</main>;
+  if (error) return <main className="mx-auto max-w-3xl px-4 py-8 text-red-600">Chyba: {error}</main>;
 
   return (
-    <main className="min-h-dvh bg-white text-gray-900 antialiased">
-      <div className="mx-auto max-w-screen-sm p-4 flex flex-col items-center gap-4">
-        {/* LOGO */}
-        {logoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logoUrl}
-            alt="logo"
-            className="mx-auto w-auto"
-            style={{ height: 'clamp(100px, 22vw, 160px)', display: 'block' }}
-          />
-        )}
+    <main className="mx-auto max-w-3xl px-4 py-8">
+      <h1 className="text-2xl font-bold mb-6">Rezervácia</h1>
 
-        {/* CAROUSEL – centrovaný na stred */}
-        {images.length > 0 && (
-          <div className="w-full flex justify-center">
-            <div className="w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
-              <Carousel images={images} aspect="4/5" className="w-full" />
-            </div>
-          </div>
-        )}
-
-        {/* TEXT */}
-        {text ? (
-          <article className="prose text-center" style={{ maxWidth: 'min(92vw, 900px)' }}>
-            {text}
-          </article>
-        ) : (
-          <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
-        )}
-
-        {/* CTA tlačidlo z tvojho SVG assetu */}
-        <div className="mt-8 w-full flex justify-center">
-          <Link
-            href="/rezervacia"
-            aria-label="Rezervácie"
-            className="inline-block active:translate-y-[1px] transition"
+      <div className="flex flex-wrap gap-2 mb-6">
+        {days.map(d => (
+          <button
+            key={d}
+            onClick={() => { setActiveDay(d); setSelectedSlot(null); }}
+            className={`rounded-lg border px-3 py-2 ${d === activeDay ? "bg-black text-white" : "hover:bg-gray-100"}`}
+            title={new Date(d).toLocaleDateString("sk-SK")}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/cta/rezervacie-btn.svg"
-              alt="Rezervácie"
-              className="h-16 w-auto select-none"
-              draggable={false}
-            />
-          </Link>
+            {new Date(d).toLocaleDateString("sk-SK", { weekday: "short", day: "2-digit", month: "2-digit" })}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-8">
+        {daySlots.length === 0 && <p className="text-sm text-gray-600">Žiadne voľné časy pre tento deň.</p>}
+        {daySlots.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setSelectedSlot(s)}
+            className={`rounded-xl border px-3 py-3 text-center ${selectedSlot?.id === s.id ? "bg-black text-white" : "hover:bg-gray-100"}`}
+          >
+            {s.time}
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border p-4 space-y-3">
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">Meno</label>
+          <input className="rounded-lg border px-3 py-2" value={name} onChange={e => setName(e.target.value)} placeholder="Tvoje meno" />
         </div>
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">Telefón</label>
+          <input className="rounded-lg border px-3 py-2" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+421 ..." />
+        </div>
+
+        <div className="pt-2">
+          <button
+            onClick={submitReservation}
+            className="w-full rounded-xl bg-black px-6 py-3 text-white hover:bg-gray-800 transition disabled:opacity-50"
+            disabled={!selectedSlot || saving}
+          >
+            {saving ? "Odosielam…" : selectedSlot ? `Rezervovať ${selectedSlot.date} ${selectedSlot.time}` : "Vyber si termín"}
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          * Sloty sa čítajú z /api/slots a rezervácia sa odosiela na /api/reservations.
+        </p>
       </div>
     </main>
   );
