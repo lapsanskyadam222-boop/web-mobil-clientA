@@ -12,18 +12,15 @@ function pad(n: number) { return n < 10 ? `0${n}` : `${n}`; }
 function toISO(d: Date)  { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 
 function buildCalendar(year: number, month0: number) {
-  // prvý a posledný deň mesiaca
   const first = new Date(year, month0, 1);
   const last  = new Date(year, month0 + 1, 0);
 
-  // chceme začať v mriežke od pondelka
   const start = new Date(first);
   const day = start.getDay(); // 0=ne
-  const diff = (day === 0 ? -6 : 1 - day);
+  const diff = (day === 0 ? -6 : 1 - day); // zarovnanie na pondelok
   start.setDate(start.getDate() + diff);
   start.setHours(0,0,0,0);
 
-  // 6 týždňov = 42 buniek (dosť pre hociktorý mesiac)
   const cells: { date: Date; inMonth: boolean }[] = [];
   for (let i=0;i<42;i++) {
     const d = new Date(start);
@@ -41,7 +38,6 @@ function fmtLong(iso: string) {
 export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
   const todayIso = new Date().toISOString().slice(0,10);
 
-  // všetky dostupné sloty (budúcnosť, nie locked/booked)
   const available = useMemo(
     () => (slots ?? [])
       .filter(s => s.date >= todayIso && !s.locked && !s.booked)
@@ -58,30 +54,26 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
     );
   }
 
-  // stav mesiaca a aktívneho dňa
   const firstDate = available[0].date;
-  const [anchor, setAnchor] = useState(() => {
-    const d = new Date(firstDate);
-    d.setDate(1); d.setHours(0,0,0,0);
-    return d;
-  });
+  const [anchor, setAnchor] = useState(() => { const d = new Date(firstDate); d.setDate(1); d.setHours(0,0,0,0); return d; });
   const [activeDate, setActiveDate] = useState(firstDate);
 
-  // mriežka buniek
   const cells = useMemo(() => buildCalendar(anchor.getFullYear(), anchor.getMonth()), [anchor]);
 
-  // dni, ktoré majú aspoň jeden slot
   const availableDates = useMemo(() => new Set(available.map(s => s.date)), [available]);
   const daySlots = useMemo(() => available.filter(s => s.date === activeDate), [available, activeDate]);
 
   function prevMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()-1); setAnchor(d); }
   function nextMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()+1); setAnchor(d); }
 
+  // štýly, ktoré nebudú závislé od Tailwind grid utilít
+  const grid7: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 };
+  const cellH = 56; // px výška buniek (mobil/desktop pokojne doladíme)
+
   return (
     <main className="mx-auto max-w-lg p-6">
       <h1 className="mb-4 text-2xl font-bold">Rezervácia</h1>
 
-      {/* Kalendár */}
       <div className="w-full">
         {/* Hlavička mesiaca */}
         <div className="mb-3 flex items-center justify-between">
@@ -90,26 +82,29 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
           <button onClick={nextMonth} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
         </div>
 
-        {/* Názvy dní */}
-        <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1">
-          {WD.map(w => <div key={w} className="py-2 font-semibold opacity-70 uppercase">{w}</div>)}
+        {/* Názvy dní – 1 riadok, 7 stĺpcov */}
+        <div style={grid7} className="text-center text-xs mb-1">
+          {WD.map(w => (
+            <div key={w} className="py-2 font-semibold opacity-70 uppercase">{w}</div>
+          ))}
         </div>
 
         {/* Mriežka 7×6 */}
-        <div className="grid grid-cols-7 gap-1 mb-6">
+        <div style={grid7} className="mb-6">
           {cells.map(({ date, inMonth }, idx) => {
             const iso = toISO(date);
             const isAv   = availableDates.has(iso);
             const isPast = iso < todayIso;
             const isAct  = iso === activeDate;
 
-            const base = "h-14 md:h-16 rounded border flex items-center justify-center";
-            let cls =
-              inMonth
-                ? (isAct ? "bg-black text-white border-black"
-                         : isAv && !isPast ? "bg-white hover:bg-gray-100 cursor-pointer"
-                                           : "bg-gray-100 text-gray-400")
-                : "bg-gray-50 text-gray-300";
+            const common = "rounded border flex items-center justify-center select-none";
+            const style: React.CSSProperties = { height: cellH };
+
+            let cls = "";
+            if (!inMonth) cls = "bg-gray-50 text-gray-300";
+            else if (isAct) cls = "bg-black text-white border-black";
+            else if (isAv && !isPast) cls = "bg-white hover:bg-gray-100 cursor-pointer";
+            else cls = "bg-gray-100 text-gray-400";
 
             return (
               <button
@@ -118,7 +113,8 @@ export default function ClientRezervacia({ slots }: { slots: Slot[] }) {
                 disabled={!inMonth || !isAv || isPast}
                 onClick={()=> setActiveDate(iso)}
                 title={fmtLong(iso)}
-                className={`${base} ${cls}`}
+                className={`${common} ${cls}`}
+                style={style}
               >
                 <span className="text-sm">{date.getDate()}</span>
               </button>
@@ -138,7 +134,6 @@ function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] })
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
-  // ak sa zmení deň, nastav prvý dostupný slot
   if (daySlots.length && !daySlots.find(s => s.id === slotId)) {
     setSlotId(daySlots[0].id);
   }
