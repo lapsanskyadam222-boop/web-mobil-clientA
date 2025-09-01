@@ -1,4 +1,3 @@
-/* app/globals.css */
 :root {
   --logoH: clamp(64px, 12vh, 120px);          /* základná výška loga (PC/tablet) */
   --logoGapBottom: calc(var(--logoH) * 0.3);  /* spodná medzera = 30 % výšky loga */
@@ -17,7 +16,6 @@
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 
-/* NEchaj font zdediť z <html> (Inter) */
 body { margin: 0; }
 
 .mx-auto { margin-left: auto; margin-right: auto; }
@@ -63,3 +61,12 @@ body { margin: 0; }
 .min-w-0 { min-width: 0; }
 .object-contain { object-fit: contain; }
 .mt-2 { margin-top: .5rem; }
+
+/* 👉 Nový doplnok: nech všetky ovládacie prvky dedia Inter */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
