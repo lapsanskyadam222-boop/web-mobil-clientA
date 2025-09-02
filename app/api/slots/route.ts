@@ -1,4 +1,3 @@
-// app/api/slots/route.ts
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -7,14 +6,13 @@ import { readJson, writeJson } from '@/lib/blobJson';
 
 type Slot = {
   id: string;
-  date: string;   // YYYY-MM-DD
-  time: string;   // HH:mm
+  date: string;     // YYYY-MM-DD
+  time: string;     // HH:MM
   locked?: boolean;
-  booked?: boolean;      // zostáva kvôli starej klient logike
-  capacity?: number;     // max počet rezervácií (default 1)
-  bookedCount?: number;  // počet prijatých rezervácií (pre rýchle UI)
+  booked?: boolean; // legacy flag – nechávame kvôli spätnému čítaniu
+  capacity?: number;     // default 1
+  bookedCount?: number;  // default 0
 };
-
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
 const KEY = 'slots.json';
@@ -26,32 +24,42 @@ const noCache = {
   Expires: '0',
 };
 
-function normalizeSlot(s: Slot): Slot {
-  const capacity = typeof s.capacity === 'number' && s.capacity > 0 ? s.capacity : 1;
-  const bookedCount = Math.max(0, s.bookedCount ?? 0);
-  const booked = bookedCount >= capacity ? true : (s.booked ?? false);
-  return { ...s, capacity, bookedCount, booked };
+function withDefaults(s: Slot): Slot {
+  const capacity = s.capacity ?? 1;
+  const bookedCount = s.bookedCount ?? (s.booked ? 1 : 0); // ak bolo iba booked=true, interpretuj ako 1/1
+  return {
+    ...s,
+    capacity,
+    bookedCount,
+    booked: bookedCount >= capacity, // udržujeme konzistenciu
+  };
+}
+
+async function load(): Promise<SlotsPayload> {
+  const data = await readJson<SlotsPayload>(KEY, DEFAULT_SLOTS);
+  data.slots = (data.slots ?? []).map(withDefaults);
+  return data;
+}
+
+async function save(data: SlotsPayload) {
+  data.updatedAt = new Date().toISOString();
+  await writeJson(KEY, data);
 }
 
 export async function GET() {
   try {
-    const data = await readJson<SlotsPayload>(KEY, DEFAULT_SLOTS);
-    if (!data.slots.length) {
-      await writeJson(KEY, data);
-    } else {
-      // normalizácia (pre staré záznamy bez capacity/bookedCount)
-      data.slots = data.slots.map(normalizeSlot);
-    }
+    const data = await load();
+    if (!data.slots.length) await save(data);
     return NextResponse.json(data, { headers: noCache });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'GET /slots zlyhalo' }, { status: 500, headers: noCache });
   }
 }
 
-/** POST:
- *  - {date,time,capacity?}     -> 1 slot
- *  - {date,times[],capacity?}  -> viac časov pre deň
- *  - {slots:[{date,time,capacity?},...]} -> všeobecne
+/** POST – vytvorenie slotov
+ *  - {date,time,capacity?}
+ *  - {date,times[],capacity?}
+ *  - {slots:[{date,time,capacity?},...]}
  */
 export async function POST(req: Request) {
   try {
@@ -60,11 +68,11 @@ export async function POST(req: Request) {
       | { date?: string; times?: string[]; capacity?: number }
       | { slots?: { date: string; time: string; capacity?: number }[] };
 
-    const data = await readJson<SlotsPayload>(KEY, DEFAULT_SLOTS);
+    const data = await load();
     const toCreate: { date: string; time: string; capacity?: number }[] = [];
 
     if ('slots' in body && Array.isArray(body.slots)) {
-      for (const s of body.slots) if (s?.date && s?.time) toCreate.push({ date: s.date, time: s.time, capacity: s.capacity });
+      for (const s of body.slots) if (s?.date && s?.time) toCreate.push(s);
     } else if ('times' in body && body.date) {
       for (const t of (body.times ?? [])) if (t) toCreate.push({ date: body.date, time: t, capacity: body.capacity });
     } else if ('date' in body && 'time' in body && body.date && body.time) {
@@ -77,66 +85,77 @@ export async function POST(req: Request) {
 
     const created: Slot[] = [];
     for (const item of toCreate) {
-      const capacity = typeof item.capacity === 'number' && item.capacity > 0 ? item.capacity : 1;
-      const newSlot: Slot = normalizeSlot({
+      const s: Slot = withDefaults({
         id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
         date: item.date,
         time: item.time,
-        capacity,
+        capacity: Math.max(1, item.capacity ?? 1),
         bookedCount: 0,
-        booked: false,
       });
-      data.slots.push(newSlot);
-      created.push(newSlot);
+      data.slots.push(s);
+      created.push(s);
     }
 
-    data.updatedAt = new Date().toISOString();
-    await writeJson(KEY, data);
-
+    await save(data);
     return NextResponse.json({ ok: true, created }, { headers: noCache });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'POST /slots zlyhalo' }, { status: 500, headers: noCache });
   }
 }
 
+/** PATCH – úpravy:
+ *  - { action:'lock'|'unlock'|'delete', id }
+ *  - { action:'setCapacity', id, capacity }
+ *  - { action:'lockDay'|'unlockDay', date }
+ */
 export async function PATCH(req: Request) {
   try {
-    const { id, action, capacity } = (await req.json()) as {
-      id?: string;
-      action?: 'lock' | 'unlock' | 'delete' | 'setCapacity';
-      capacity?: number;
-    };
-    if (!id || !action) return NextResponse.json({ error: 'Chýba id alebo action' }, { status: 400, headers: noCache });
+    const body = await req.json() as
+      | { action: 'lock'|'unlock'|'delete'; id: string }
+      | { action: 'setCapacity'; id: string; capacity: number }
+      | { action: 'lockDay'|'unlockDay'; date: string };
 
-    const data = await readJson<SlotsPayload>(KEY, DEFAULT_SLOTS);
-    const slotIdx = data.slots.findIndex(s => s.id === id);
+    const data = await load();
 
-    if (action !== 'delete' && slotIdx === -1) {
-      return NextResponse.json({ error: 'Slot neexistuje' }, { status: 404, headers: noCache });
-    }
-
-    if (action === 'delete') {
-      data.slots = data.slots.filter(s => s.id !== id);
-    } else {
-      const slot = normalizeSlot(data.slots[slotIdx]);
-
-      if (action === 'lock') slot.locked = true;
-      if (action === 'unlock') slot.locked = false;
-      if (action === 'setCapacity') {
-        const cap = typeof capacity === 'number' && capacity > 0 ? Math.floor(capacity) : 1;
-        slot.capacity = cap;
-        // ak je už obsadených viac, než nová kapacita, označíme booked=true
-        slot.booked = (slot.bookedCount ?? 0) >= cap;
+    if (body.action === 'lock' || body.action === 'unlock' || body.action === 'delete') {
+      if (!('id' in body) || !body.id) {
+        return NextResponse.json({ error: 'Chýba id' }, { status: 400, headers: noCache });
       }
-
-      data.slots[slotIdx] = normalizeSlot(slot);
+      if (body.action === 'delete') {
+        data.slots = data.slots.filter(s => s.id !== body.id);
+      } else {
+        const s = data.slots.find(s => s.id === body.id);
+        if (!s) return NextResponse.json({ error: 'Slot neexistuje' }, { status: 404, headers: noCache });
+        s.locked = body.action === 'lock';
+      }
+      await save(data);
+      return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
     }
 
-    data.updatedAt = new Date().toISOString();
-    await writeJson(KEY, data);
+    if (body.action === 'setCapacity') {
+      const cap = Math.max(1, Math.floor(body.capacity ?? 1));
+      const s = data.slots.find(s => s.id === body.id);
+      if (!s) return NextResponse.json({ error: 'Slot neexistuje' }, { status: 404, headers: noCache });
+      s.capacity = cap;
+      // ak už je n plné, zrkadli aj legacy flag
+      s.booked = (s.bookedCount ?? 0) >= cap;
+      await save(data);
+      return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
+    }
 
-    // vrátime celý zoznam ako autoritu
-    return NextResponse.json({ ok: true, slots: data.slots.map(normalizeSlot) }, { headers: noCache });
+    if (body.action === 'lockDay' || body.action === 'unlockDay') {
+      if (!body.date) {
+        return NextResponse.json({ error: 'Chýba date' }, { status: 400, headers: noCache });
+      }
+      const lockVal = body.action === 'lockDay';
+      data.slots.forEach(s => {
+        if (s.date === body.date) s.locked = lockVal;
+      });
+      await save(data);
+      return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
+    }
+
+    return NextResponse.json({ error: 'Neznáma akcia' }, { status: 400, headers: noCache });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'PATCH /slots zlyhalo' }, { status: 500, headers: noCache });
   }
