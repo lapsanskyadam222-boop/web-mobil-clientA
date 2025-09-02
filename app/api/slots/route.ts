@@ -11,10 +11,9 @@ export type Slot = {
   time: string;   // HH:mm
   locked?: boolean;
   booked?: boolean;
-  capacity?: number;       // voliteľná kapacita (>=1)
-  bookedCount?: number;    // ak by si neskôr chcel počítať obsadenosť
+  capacity?: number;
+  bookedCount?: number;
 };
-
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
 const KEY = 'slots.json';
@@ -90,9 +89,9 @@ export async function POST(req: Request) {
 }
 
 /** PATCH
- *  - akcia na jednom slote: { id, action: 'lock' | 'unlock' | 'delete' }
- *  - kapacita slotu:       { id, action: 'setCapacity', capacity }
- *  - akcia na dni:         { date, action: 'lockDay' | 'unlockDay' }
+ *  - { id, action: 'lock'|'unlock'|'delete' }
+ *  - { id, action: 'setCapacity', capacity }
+ *  - { date, action: 'lockDay'|'unlockDay' }
  *  => vždy vracia { ok:true, slots:[...] }
  */
 export async function PATCH(req: Request) {
@@ -100,7 +99,6 @@ export async function PATCH(req: Request) {
     const payload = await req.json();
     const data = await readJson<SlotsPayload>(KEY, DEFAULT_SLOTS);
 
-    // 1) Operácie nad jedným slotom
     if (payload?.id && typeof payload.id === 'string' && payload?.action) {
       const slot = data.slots.find(s => s.id === payload.id);
       if (!slot && payload.action !== 'delete') {
@@ -125,7 +123,6 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
     }
 
-    // 2) Lock / unlock celého dňa
     if (payload?.date && typeof payload.date === 'string' &&
         (payload?.action === 'lockDay' || payload?.action === 'unlockDay')) {
       const lock = payload.action === 'lockDay';
