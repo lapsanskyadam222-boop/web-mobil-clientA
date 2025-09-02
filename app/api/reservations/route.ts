@@ -1,39 +1,24 @@
+// app/api/reservations/route.ts
 import { NextResponse } from 'next/server';
 import { readJson, writeJson } from '@/lib/blobJson';
 import { buildICS } from '@/lib/ics';
 import { sendReservationEmail } from '@/lib/sendEmail';
 
 type Slot = {
-  id: string;
-  date: string;
-  time: string;
-  locked?: boolean;
-  booked?: boolean;   // legacy
-  capacity?: number;  // default 1
-  bookedCount?: number; // default 0
+  id: string; date: string; time: string;
+  locked?: boolean; booked?: boolean;
+  capacity?: number; bookedCount?: number;
 };
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
 type Reservation = {
-  id: string;
-  slotId: string;
-  date: string;
-  time: string;
-  name: string;
-  email: string;
-  phone: string;
-  createdAt: string;
+  id: string; slotId: string; date: string; time: string;
+  name: string; email: string; phone: string; createdAt: string;
 };
 type ReservationsPayload = { reservations: Reservation[]; updatedAt: string };
 
 const SLOTS_KEY = 'slots.json';
 const RES_KEY   = 'reservations.json';
-
-function withDefaults(s: Slot): Slot {
-  const capacity = s.capacity ?? 1;
-  const bookedCount = s.bookedCount ?? (s.booked ? 1 : 0);
-  return { ...s, capacity, bookedCount, booked: bookedCount >= capacity };
-}
 
 export async function POST(req: Request) {
   try {
@@ -46,23 +31,28 @@ export async function POST(req: Request) {
     }
 
     const slotsPayload = await readJson<SlotsPayload>(SLOTS_KEY, { slots: [], updatedAt: '' });
-    slotsPayload.slots = (slotsPayload.slots ?? []).map(withDefaults);
     const resPayload   = await readJson<ReservationsPayload>(RES_KEY, { reservations: [], updatedAt: '' });
 
     const slot = slotsPayload.slots.find(s => s.id === slotId);
     if (!slot)       return NextResponse.json({ error: 'Slot neexistuje.' }, { status: 404 });
     if (slot.locked) return NextResponse.json({ error: 'Slot je zamknutý.' }, { status: 409 });
 
-    const capacity = slot.capacity ?? 1;
-    const bookedCount = slot.bookedCount ?? 0;
-    if (bookedCount >= capacity) {
-      return NextResponse.json({ error: 'Slot je už plne obsadený.' }, { status: 409 });
+    // kapacitná kontrola
+    const cap = typeof slot.capacity === 'number' ? slot.capacity : undefined;
+    const used = slot.bookedCount ?? 0;
+
+    if (cap != null) {
+      if (used >= cap) {
+        return NextResponse.json({ error: 'Tento čas je už plne obsadený.' }, { status: 409 });
+      }
+      slot.bookedCount = used + 1;
+      if (slot.bookedCount >= cap) slot.booked = true; // označ ako plne obsadené
+    } else {
+      if (slot.booked) {
+        return NextResponse.json({ error: 'Slot je už rezervovaný.' }, { status: 409 });
+      }
+      slot.booked = true;
     }
-
-    // zapíš rezerváciu + navýš bookedCount
-    slot.bookedCount = bookedCount + 1;
-    slot.booked = slot.bookedCount >= capacity;
-
     slotsPayload.updatedAt = new Date().toISOString();
 
     const reservation: Reservation = {
@@ -81,7 +71,6 @@ export async function POST(req: Request) {
     await writeJson(SLOTS_KEY, slotsPayload);
     await writeJson(RES_KEY, resPayload);
 
-    // ICS (1h)
     const startLocal = new Date(`${slot.date}T${slot.time}:00`);
     const ics = buildICS({
       title: `Rezervácia: ${reservation.name} (${reservation.phone})`,

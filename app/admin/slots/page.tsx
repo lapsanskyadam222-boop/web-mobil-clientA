@@ -1,3 +1,4 @@
+// app/admin/slots/page.tsx
 export const revalidate = 0;
 
 import AdminSlotsClient from './Client';
@@ -5,12 +6,12 @@ import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
 
 type Slot = {
   id: string;
-  date: string;
-  time: string;
+  date: string;     // YYYY-MM-DD
+  time: string;     // HH:mm
   locked?: boolean;
   booked?: boolean;
-  // capacity?: number;
-  // bookedCount?: number;
+  capacity?: number;
+  bookedCount?: number;
 };
 
 async function getSlots(): Promise<Slot[]> {
@@ -27,5 +28,5 @@ async function getSlots(): Promise<Slot[]> {
 
 export default async function AdminSlotsPage() {
   const slots = await getSlots();
-  return <AdminSlotsClient slots={slots} />; // <-- kľúčová zmena: slots namiesto initial
+  return <AdminSlotsClient slots={slots} />;
 }
