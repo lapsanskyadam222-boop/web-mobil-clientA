@@ -1,12 +1,21 @@
+// app/api/reservations/route.ts
 import { NextResponse } from 'next/server';
 import { readJson, writeJson } from '@/lib/blobJson';
 import { buildICS } from '@/lib/ics';
 import { sendReservationEmail } from '@/lib/sendEmail';
 
-type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean };
+type Slot = {
+  id: string;
+  date: string;
+  time: string;
+  locked?: boolean;
+  booked?: boolean;
+  capacity?: number;     // default 1
+  bookedCount?: number;  // koľko je už obsadených
+};
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
-// e-mail je po novom povinný
+// e-mail je povinný
 type Reservation = {
   id: string;
   slotId: string;
@@ -43,12 +52,23 @@ export async function POST(req: Request) {
     const slot = slotsPayload.slots.find(s => s.id === slotId);
     if (!slot)        return NextResponse.json({ error: 'Slot neexistuje.' }, { status: 404 });
     if (slot.locked)  return NextResponse.json({ error: 'Slot je zamknutý.' }, { status: 409 });
-    if (slot.booked)  return NextResponse.json({ error: 'Slot je už rezervovaný.' }, { status: 409 });
 
-    // Označ slot a zapíš rezerváciu
-    slot.booked = true;
-    slotsPayload.updatedAt = new Date().toISOString();
+    // kapacita & obsadenosť
+    const capacity = typeof slot.capacity === 'number' && slot.capacity > 0 ? slot.capacity : 1;
 
+    // zistíme aktuálny počet rezervácií na daný slot (z reservations)
+    const bookedCountFromRes = resPayload.reservations.reduce((acc, r) => acc + (r.slotId === slot.id ? 1 : 0), 0);
+    const currentBooked = Math.max(slot.bookedCount ?? 0, bookedCountFromRes);
+
+    if (currentBooked >= capacity) {
+      // pre istotu zosúladíme aj flag booked
+      slot.booked = true;
+      slot.bookedCount = currentBooked;
+      await writeJson(SLOTS_KEY, slotsPayload);
+      return NextResponse.json({ error: 'Slot je už plný.' }, { status: 409 });
+    }
+
+    // Vytvor rezerváciu
     const reservation: Reservation = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
       slotId: slot.id,
@@ -61,6 +81,13 @@ export async function POST(req: Request) {
     };
     resPayload.reservations.push(reservation);
     resPayload.updatedAt = new Date().toISOString();
+
+    // Aktualizuj slot (inkrement bookedCount, nastav booked ak sa práve naplnil)
+    const newCount = currentBooked + 1;
+    slot.bookedCount = newCount;
+    slot.booked = newCount >= capacity;
+
+    slotsPayload.updatedAt = new Date().toISOString();
 
     await writeJson(SLOTS_KEY, slotsPayload);
     await writeJson(RES_KEY, resPayload);
