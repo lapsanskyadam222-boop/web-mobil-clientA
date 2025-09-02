@@ -1,361 +1,215 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-/** ===== Typy zdieľané s API ===== */
-export type Slot = {
+type Slot = {
   id: string;
-  date: string;       // YYYY-MM-DD
-  time: string;       // HH:mm
-  locked?: boolean;   // slot zamknutý (nebookingovateľný)
-  booked?: boolean;   // už rezervovaný
-  capacity?: number;  // max počet ľudí
-  bookedCount?: number; // koľko je už rezervovaných
+  date: string;
+  time: string;
+  locked?: boolean;
+  booked?: boolean;
+  capacity?: number;
+  bookedCount?: number;
 };
-
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
-/** ===== Pomocné funkcie ===== */
-function pad(n: number) { return n < 10 ? `0${n}` : `${n}`; }
-function toISO(d: Date) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
-const WD = ['po', 'ut', 'st', 'št', 'pia', 'so', 'ne'];
-const monthLabel = (d: Date) => d.toLocaleDateString('sk-SK', { month: 'long', year: 'numeric' });
-
-/** ===== FRONTa async operácií (aby PATCH/POST nešli naraz) ===== */
-let op: Promise<void> = Promise.resolve();
-function enqueue(fn: () => Promise<unknown>): Promise<void> {
-  op = op
-    .then(() => fn())
-    .then(() => { /* normalize to void */ })
-    .catch(() => { /* swallow to keep chain alive */ });
-  return op;
-}
-
-/** ===== Volania API (vracajú vždy čerstvé slots) ===== */
-async function apiGet(): Promise<Slot[]> {
-  const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
-  const j = (await res.json()) as SlotsPayload;
-  return Array.isArray(j?.slots) ? j.slots : [];
-}
-
-async function apiPostAdd(toCreate: { date: string; time: string; capacity?: number }[]): Promise<Slot[]> {
-  const res = await fetch('/api/slots', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slots: toCreate }),
-  });
-  if (!res.ok) throw new Error('POST /slots zlyhalo');
-  // po zápise načítaj čerstvé
-  return apiGet();
-}
-
-async function apiPatch(body: unknown): Promise<Slot[]> {
-  const res = await fetch('/api/slots', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error('PATCH /slots zlyhalo');
-  // API môže vracať slots, ale pre istotu vždy dočítame čerstvo
-  return apiGet();
-}
-
-async function apiDelete(id: string): Promise<Slot[]> {
-  const res = await fetch('/api/slots', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, action: 'delete' }),
-  });
-  if (!res.ok) throw new Error('DELETE slot zlyhalo');
-  return apiGet();
-}
-
-/** ===== Admin komponent ===== */
 export default function AdminSlotsClient() {
   const [slots, setSlots] = useState<Slot[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  // form state
   const [newDate, setNewDate] = useState('');
   const [newTime, setNewTime] = useState('');
-  const [newCap,  setNewCap]  = useState<number | ''>('');
+  const [newCap, setNewCap] = useState(1);
 
-  // kalendár – rovnaký štýl ako rezervačná stránka
-  const initialAnchor = useMemo(() => {
-    const first = slots.length ? slots[0].date : toISO(new Date());
-    const d = new Date(first);
-    d.setDate(1);
-    d.setHours(0,0,0,0);
-    return d;
-  }, [slots]);
+  // jednoduchá fronta operácií (garantuje poradie a „fire-and-forget“)
+  let chain = Promise.resolve();
+  function enqueue(fn: () => Promise<any>): Promise<void> {
+    chain = chain.then(fn, fn).then(() => undefined, () => undefined);
+    return chain;
+  }
 
-  const [anchor, setAnchor] = useState<Date>(initialAnchor);
-  const [activeDate, setActiveDate] = useState<string>(toISO(new Date()));
+  async function fetchFresh() {
+    const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
+    const j = (await res.json()) as SlotsPayload | any;
+    setSlots(Array.isArray(j?.slots) ? j.slots : []);
+  }
 
-  const byDate = useMemo(() => {
-    const m = new Map<string, Slot[]>();
-    for (const s of slots) {
-      if (!m.has(s.date)) m.set(s.date, []);
-      m.get(s.date)!.push(s);
-    }
-    for (const arr of m.values()) {
-      arr.sort((a,b) => (a.time < b.time ? -1 : 1));
-    }
-    return m;
-  }, [slots]);
-
-  const daySlots = byDate.get(activeDate) ?? [];
-
-  React.useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await apiGet();
-        setSlots(data);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  useEffect(() => {
+    fetchFresh().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** ====== Admin akcie (všetky idú cez enqueue) ====== */
-
-  async function refresh() {
-    setLoading(true);
-    try {
-      const data = await apiGet();
-      setSlots(data);
-    } finally {
-      setLoading(false);
-    }
-  }
+  // ────────────────────────────────────────────────────────────────────────────
+  // Akcie
 
   function addOne() {
-    if (!newDate || !newTime) {
-      alert('Vyplň dátum aj čas.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || !/^\d{2}:\d{2}$/.test(newTime)) {
+      alert('Zadaj dátum (YYYY-MM-DD) a čas (HH:mm).');
       return;
     }
-    const cap = typeof newCap === 'number' && Number.isFinite(newCap) ? Math.max(1, newCap) : 1;
+    const cap = Number.isFinite(+newCap) ? Math.max(1, +newCap) : 1;
+
+    setLoading(true);
     enqueue(async () => {
-      const data = await apiPostAdd([{ date: newDate, time: newTime, capacity: cap }]);
-      setSlots(data);
-      setActiveDate(newDate);
-      setNewTime('');
-      setNewCap('');
-    }).then(refresh).catch(() => {});
+      const res = await fetch('/api/slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slots: [{ date: newDate, time: newTime, capacity: cap }] }),
+      });
+      if (!res.ok) alert((await res.json())?.error ?? 'Chyba slots[]');
+    }).then(() => fetchFresh().finally(() => setLoading(false)));
   }
 
-  function lockSlot(s: Slot, lock: boolean) {
+  function lockDay(date: string, lock: boolean) {
+    setLoading(true);
     enqueue(async () => {
-      const data = await apiPatch({ id: s.id, date: s.date, time: s.time, action: lock ? 'lock' : 'unlock' });
-      setSlots(data);
-    }).then(refresh).catch(() => {});
+      await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, action: lock ? 'lockDay' : 'unlockDay' }),
+      });
+    }).then(() => fetchFresh().finally(() => setLoading(false)));
   }
 
-  function deleteOne(s: Slot) {
-    if (!confirm(`Vymazať ${s.date} ${s.time}?`)) return;
+  function lockSlot(id: string, lock: boolean) {
+    setLoading(true);
     enqueue(async () => {
-      const data = await apiDelete(s.id);
-      setSlots(data);
-    }).then(refresh).catch(() => {});
+      await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: lock ? 'lock' : 'unlock' }),
+      });
+    }).then(() => fetchFresh().finally(() => setLoading(false)));
   }
 
-  function changeCapacity(s: Slot, cap: number) {
-    const safe = Number.isFinite(cap) ? Math.max(1, Math.round(cap)) : 1;
+  function changeCap(id: string, cap: number) {
+    const safe = Number.isFinite(+cap) ? Math.max(1, +cap) : 1;
+    // optimisticky v UI hneď
+    setSlots(prev => prev.map(s => (s.id === id ? { ...s, capacity: safe } : s)));
     enqueue(async () => {
-      const data = await apiPatch({ id: s.id, date: s.date, time: s.time, action: 'capacity', capacity: safe });
-      setSlots(data);
-    }).then(refresh).catch(() => {});
+      await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: 'capacity', capacity: safe }),
+      });
+    }).then(() => fetchFresh().catch(() => {}));
   }
 
-  function lockDay(dayISO: string, lock: boolean) {
+  function remove(id: string) {
+    setLoading(true);
     enqueue(async () => {
-      const data = await apiPatch({ date: dayISO, action: lock ? 'lockDay' : 'unlockDay' });
-      setSlots(data);
-    }).then(refresh).catch(() => {});
+      await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: 'delete' }),
+      });
+    }).then(() => fetchFresh().finally(() => setLoading(false)));
   }
 
-  /** ====== kalendár (rovnaká logika ako na /rezervacia) ====== */
-  function buildCalendarWeeks(year: number, month0: number) {
-    const first = new Date(year, month0, 1);
-    const last  = new Date(year, month0 + 1, 0);
-
-    const start = new Date(first);
-    const day = start.getDay(); // 0=ne, 1=po...
-    const diff = (day === 0 ? -6 : 1 - day);
-    start.setDate(start.getDate() + diff);
-    start.setHours(0,0,0,0);
-
-    const cells: { date: Date; inMonth: boolean }[] = [];
-    for (let i=0;i<42;i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      cells.push({ date: d, inMonth: d >= first && d <= last });
-    }
-    const weeks: { date: Date; inMonth: boolean }[][] = [];
-    for (let i=0;i<cells.length; i+=7) weeks.push(cells.slice(i, i+7));
-    return weeks.filter(week => week.some(c => c.inMonth));
+  async function wipeAll() {
+    if (!confirm('Naozaj vymazať všetky sloty?')) return;
+    setLoading(true);
+    await enqueue(async () => { await fetch('/api/slots', { method: 'DELETE' }); });
+    await fetchFresh();
+    setLoading(false);
   }
 
-  const weeks = useMemo(() => buildCalendarWeeks(anchor.getFullYear(), anchor.getMonth()), [anchor]);
-  const availableDates = useMemo(() => new Set(slots.map(s => s.date)), [slots]);
-  const grid7: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 };
-  const cellH = 56;
+  // ────────────────────────────────────────────────────────────────────────────
+  // render
 
-  function prevMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()-1); setAnchor(d); }
-  function nextMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()+1); setAnchor(d); }
+  // zoskupiť podľa dňa
+  const byDay = new Map<string, Slot[]>();
+  for (const s of slots.sort((a,b) => a.date===b.date ? (a.time<b.time?-1:1) : (a.date<b.date?-1:1))) {
+    if (!byDay.has(s.date)) byDay.set(s.date, []);
+    byDay.get(s.date)!.push(s);
+  }
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-4 text-2xl font-bold">Správa slotov</h1>
+      <h1 className="text-2xl font-semibold mb-4">Správa slotov</h1>
 
-      {/* Kalendár */}
-      <div className="w-full mb-4">
-        <div className="mb-3 flex items-center justify-between">
-          <button onClick={prevMonth} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Predchádzajúci mesiac">‹</button>
-          <div className="text-base font-semibold capitalize">{monthLabel(anchor)}</div>
-          <button onClick={nextMonth} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
-        </div>
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          placeholder="rrrr-mm-dd"
+          value={newDate}
+          onChange={e=>setNewDate(e.target.value)}
+          className="border rounded px-2 py-1 text-sm"
+        />
+        <input
+          placeholder="hh:mm"
+          value={newTime}
+          onChange={e=>setNewTime(e.target.value)}
+          className="border rounded px-2 py-1 text-sm"
+        />
+        <input
+          type="number"
+          min={1}
+          value={newCap}
+          onChange={e=>setNewCap(+e.target.value)}
+          className="border rounded px-2 py-1 w-20 text-sm"
+          title="Kapacita"
+        />
+        <button
+          disabled={loading}
+          onClick={addOne}
+          className="px-3 py-1 rounded bg-black text-white text-sm"
+        >
+          Pridať 1
+        </button>
+        <button
+          disabled={loading}
+          onClick={wipeAll}
+          className="px-3 py-1 rounded border text-sm"
+          title="Vymaže úplne všetko"
+        >
+          Vymazať všetky
+        </button>
+      </div>
 
-        <div style={grid7} className="text-center text-xs mb-1">
-          {WD.map(w => (
-            <div key={w} className="py-2 font-semibold opacity-70 uppercase">{w}</div>
-          ))}
-        </div>
-
-        <div style={{ display: 'grid', rowGap: 6, marginBottom: 24 }}>
-          {weeks.map((week, wi) => (
-            <div key={wi} style={grid7}>
-              {week.map(({ date, inMonth }, di) => {
-                const iso = toISO(date);
-                const isAct  = iso === activeDate;
-                const hasAny = availableDates.has(iso);
-
-                const common = 'rounded border flex items-center justify-center select-none';
-                const style: React.CSSProperties = { height: cellH };
-
-                let cls = '';
-                if (!inMonth) cls = 'bg-gray-50 text-gray-300';
-                else if (isAct) cls = 'bg-black text-white border-black';
-                else if (hasAny) cls = 'bg-white hover:bg-gray-100 cursor-pointer';
-                else cls = 'bg-gray-100 text-gray-400';
-
-                return (
-                  <button
-                    type="button"
-                    key={di}
-                    onClick={() => setActiveDate(iso)}
-                    title={iso}
-                    className={`${common} ${cls}`}
-                    style={style}
-                  >
-                    <span className="text-sm">{date.getDate()}</span>
-                  </button>
-                );
-              })}
+      {/* tabuľka podľa dní */}
+      <div className="rounded border divide-y">
+        {[...byDay.entries()].map(([date, arr]) => (
+          <div key={date} className="p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="font-medium">{date}</div>
+              <div className="flex gap-2">
+                <button className="px-2 py-1 text-xs rounded border" onClick={()=>lockDay(date, true)}>Zamknúť deň</button>
+                <button className="px-2 py-1 text-xs rounded border" onClick={()=>lockDay(date, false)}>Odomknúť deň</button>
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* Ovládanie dňa */}
-      <div className="mb-4 rounded border p-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm opacity-70">Dátum: <strong>{activeDate}</strong></div>
-          <div className="space-x-2">
-            <button
-              className="rounded border px-3 py-1 hover:bg-gray-50"
-              onClick={() => lockDay(activeDate, true)}
-            >Zamknúť deň</button>
-            <button
-              className="rounded border px-3 py-1 hover:bg-gray-50"
-              onClick={() => lockDay(activeDate, false)}
-            >Odomknúť deň</button>
-          </div>
-        </div>
-
-        {/* Form na pridanie slotu */}
-        <div className="grid gap-2 sm:grid-cols-4 grid-cols-1">
-          <input
-            type="date"
-            className="border rounded px-3 py-2"
-            value={newDate}
-            onChange={e => setNewDate(e.target.value)}
-            placeholder="YYYY-MM-DD"
-          />
-          <input
-            type="time"
-            className="border rounded px-3 py-2"
-            value={newTime}
-            onChange={e => setNewTime(e.target.value)}
-            placeholder="HH:mm"
-          />
-          <input
-            type="number"
-            min={1}
-            className="border rounded px-3 py-2"
-            value={newCap}
-            onChange={e => {
-              const v = e.target.value;
-              setNewCap(v === '' ? '' : Number(v));
-            }}
-            placeholder="Kapacita (min 1)"
-          />
-          <button
-            className="rounded bg-black text-white px-3 py-2 hover:bg-gray-800"
-            onClick={addOne}
-          >Pridať 1</button>
-        </div>
-      </div>
-
-      {/* Zoznam slotov pre vybraný deň */}
-      <div className="rounded border p-3">
-        <div className="text-sm font-semibold mb-2">Sloty pre {activeDate}:</div>
-        {!daySlots.length && <div className="text-sm opacity-60">Žiadne sloty.</div>}
-        <div className="space-y-2">
-          {daySlots.map(s => (
-            <div key={s.id} className="flex items-center justify-between rounded border px-3 py-2">
-              <div className="text-sm min-w-0">
-                <div className="font-medium">{s.time}</div>
-                <div className="opacity-70">
-                  {s.locked ? 'Zamknutý' : 'Voľné'} &middot; Kapacita: {s.capacity ?? 1} &middot; Rezervované: {s.bookedCount ?? 0}
+            <div className="grid grid-cols-[100px_1fr_1fr_1fr] gap-2 text-sm">
+              {arr.map(s => (
+                <div key={s.id} className="contents">
+                  <div className="px-2 py-1 rounded border text-center">{s.time}</div>
+                  <div className="px-2 py-1 rounded border">
+                    Kapacita:{' '}
+                    <input
+                      type="number"
+                      min={1}
+                      defaultValue={s.capacity ?? 1}
+                      onBlur={(e)=>changeCap(s.id, +e.target.value)}
+                      className="w-20 border rounded px-1 py-[2px] ml-2"
+                      title="Zmeniť kapacitu"
+                    />
+                  </div>
+                  <div className="px-2 py-1 rounded border">
+                    Stav: {s.locked ? 'Zamknuté' : 'Voľné'}{s.booked ? ' · Rezervované' : ''}
+                  </div>
+                  <div className="px-2 py-1 flex gap-2">
+                    <button className="px-2 py-1 text-xs rounded border" onClick={()=>lockSlot(s.id, true)}>Zamknúť</button>
+                    <button className="px-2 py-1 text-xs rounded border" onClick={()=>lockSlot(s.id, false)}>Odomknúť</button>
+                    <button className="px-2 py-1 text-xs rounded border" onClick={()=>remove(s.id)}>Vymazať</button>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs opacity-70">Kapacita</label>
-                <input
-                  type="number"
-                  min={1}
-                  defaultValue={s.capacity ?? 1}
-                  onBlur={(e) => {
-                    const v = Number(e.target.value);
-                    if (!Number.isFinite(v) || v < 1) { e.currentTarget.value = String(s.capacity ?? 1); return; }
-                    if (v === (s.capacity ?? 1)) return;
-                    changeCapacity(s, v);
-                  }}
-                  className="w-20 border rounded px-2 py-1 text-sm"
-                />
-                <button
-                  className="rounded border px-3 py-1 hover:bg-gray-50"
-                  onClick={() => lockSlot(s, !s.locked)}
-                >
-                  {s.locked ? 'Odomknúť' : 'Zamknúť'}
-                </button>
-                <button
-                  className="rounded border px-3 py-1 hover:bg-gray-50"
-                  onClick={() => deleteOne(s)}
-                >
-                  Vymazať
-                </button>
-              </div>
+              ))}
+              {arr.length === 0 && <div className="text-xs opacity-60">Žiadne časy.</div>}
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Stav */}
-      <div className="mt-3 text-xs opacity-60">
-        {loading ? 'Načítavam…' : `Slotov spolu: ${slots.length}`}
+          </div>
+        ))}
+        {byDay.size === 0 && (
+          <div className="p-4 text-sm opacity-70">Zatiaľ nie sú žiadne sloty.</div>
+        )}
       </div>
     </main>
   );
