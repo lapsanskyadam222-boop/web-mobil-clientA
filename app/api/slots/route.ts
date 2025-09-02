@@ -5,13 +5,13 @@ import { NextResponse } from 'next/server';
 import { readJson, writeJson } from '@/lib/blobJson';
 
 type Slot = {
-  id: string;            // unikátne ID
-  date: string;          // 'YYYY-MM-DD'
-  time: string;          // 'HH:mm'
-  locked?: boolean;      // zamknutý termín
-  booked?: boolean;      // legacy flag
-  capacity?: number;     // max osôb (>=1)
-  bookedCount?: number;  // už rezervovaných osôb
+  id: string;
+  date: string;    // YYYY-MM-DD
+  time: string;    // HH:mm
+  locked?: boolean;
+  booked?: boolean;     // legacy
+  capacity?: number;    // >=1
+  bookedCount?: number; // odvodené z legacy booked
 };
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
@@ -26,7 +26,7 @@ const noCache = {
 
 /* Helpers */
 function makeId(date: string, time: string) {
-  // bez replaceAll – kompatibilné so starším targetom
+  // bez replaceAll – kvôli starším TS targetom
   return `${date}_${time.split(':').join('')}`;
 }
 function isIsoDate(s?: string) { return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s); }
@@ -34,14 +34,17 @@ function isHm(s?: string) { return !!s && /^\d{2}:\d{2}$/.test(s); }
 function findIndex(slots: Slot[], q: { date: string; time: string }) {
   return slots.findIndex(s => s.date === q.date && s.time === q.time);
 }
-async function readFresh(): Promise<SlotsPayload> {
-  const data = await readJson<SlotsPayload>(KEY, EMPTY);
-  if (!Array.isArray(data.slots)) return { ...EMPTY, slots: [] };
-  for (const s of data.slots) {
+function normalize(mut: SlotsPayload) {
+  if (!Array.isArray(mut.slots)) mut.slots = [];
+  for (const s of mut.slots) {
     if (!Number.isFinite(s.capacity!)) s.capacity = 1;
     if (!Number.isFinite(s.bookedCount!)) s.bookedCount = s.booked ? 1 : 0;
   }
-  return data;
+  return mut;
+}
+async function readFresh(): Promise<SlotsPayload> {
+  const d = await readJson<SlotsPayload>(KEY, EMPTY);
+  return normalize(d);
 }
 
 /* GET */
@@ -54,7 +57,7 @@ export async function GET() {
   }
 }
 
-/* POST – pridanie slotov */
+/* POST – pridanie slotov (single | date+times[] | slots[]) */
 export async function POST(req: Request) {
   try {
     const body = await req.json() as
@@ -79,10 +82,9 @@ export async function POST(req: Request) {
         }
       }
     } else if ('date' in body && 'time' in body && isIsoDate(body.date) && isHm(body.time)) {
-      // >>> DOPLNENÉ ÚZKE PRETYPovanie pre TS:
       const date = body.date as string;
       const time = body.time as string;
-      const cap = Number.isFinite(+body.capacity!) ? Math.max(1, +body.capacity!) : 1;
+      const cap  = Number.isFinite(+body.capacity!) ? Math.max(1, +body.capacity!) : 1;
       toAdd.push({ date, time, capacity: cap });
     }
 
@@ -90,28 +92,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Chýbajú platné sloty.' }, { status: 400, headers: noCache });
     }
 
+    // mutate in-memory → write → return mutated (bez druhého čítania)
     const data = await readFresh();
     for (const s of toAdd) {
-      const id = makeId(s.date, s.time);
+      const id  = makeId(s.date, s.time);
       const idx = findIndex(data.slots, { date: s.date, time: s.time });
       const base: Slot = {
         id, date: s.date, time: s.time,
         locked: false, booked: false,
         capacity: s.capacity, bookedCount: 0,
       };
-      if (idx >= 0) data.slots[idx] = { ...base, ...data.slots[idx], capacity: s.capacity };
-      else data.slots.push(base);
+      if (idx >= 0) {
+        data.slots[idx] = { ...data.slots[idx], ...base, capacity: s.capacity };
+      } else {
+        data.slots.push(base);
+      }
     }
     data.updatedAt = new Date().toISOString();
     await writeJson(KEY, data);
-    const fresh = await readFresh();
-    return NextResponse.json({ ok: true, slots: fresh.slots }, { headers: noCache });
+    normalize(data);
+    return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'POST /slots zlyhalo' }, { status: 500, headers: noCache });
   }
 }
 
-/* PATCH – úpravy */
+/* PATCH – delete | lock | unlock | capacity | lockDay | unlockDay */
 export async function PATCH(req: Request) {
   try {
     const p = await req.json() as
@@ -120,20 +126,20 @@ export async function PATCH(req: Request) {
 
     const data = await readFresh();
 
-    // lock/unlock day
+    // deň
     if (p.action === 'lockDay' || p.action === 'unlockDay') {
-      if (!isIsoDate(p.date)) return NextResponse.json({ error: 'Chýba platný date.' }, { status: 400, headers: noCache });
+      if (!isIsoDate((p as any).date)) {
+        return NextResponse.json({ error: 'Chýba platný date.' }, { status: 400, headers: noCache });
+      }
       const lock = p.action === 'lockDay';
-      for (const s of data.slots) if (s.date === p.date) s.locked = lock;
+      for (const s of data.slots) if (s.date === (p as any).date) s.locked = lock;
       data.updatedAt = new Date().toISOString();
       await writeJson(KEY, data);
-      const fresh = await readFresh();
-      return NextResponse.json({ ok: true, slots: fresh.slots }, { headers: noCache });
+      normalize(data);
+      return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
     }
 
-    // single-slot
-    if (!('action' in p)) return NextResponse.json({ error: 'Chýba action.' }, { status: 400, headers: noCache });
-
+    // single
     let idx = -1;
     if ((p as any).id) {
       idx = data.slots.findIndex(s => s.id === (p as any).id);
@@ -153,14 +159,14 @@ export async function PATCH(req: Request) {
 
     data.updatedAt = new Date().toISOString();
     await writeJson(KEY, data);
-    const fresh = await readFresh();
-    return NextResponse.json({ ok: true, slots: fresh.slots }, { headers: noCache });
+    normalize(data);
+    return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'PATCH /slots zlyhalo' }, { status: 500, headers: noCache });
   }
 }
 
-/* DELETE – wipe */
+/* DELETE – wipe všetkých slotov */
 export async function DELETE() {
   try {
     const empty: SlotsPayload = { slots: [], updatedAt: new Date().toISOString() };
