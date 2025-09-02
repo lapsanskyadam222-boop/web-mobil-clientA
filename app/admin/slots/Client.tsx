@@ -13,9 +13,7 @@ export type Slot = {
   bookedCount?: number;
 };
 
-type Props = {
-  initial: Slot[];
-};
+type Props = { initial: Slot[] };
 
 const WD = ['po','ut','st','št','pia','so','ne'];
 const monthLabel = (d: Date) =>
@@ -28,7 +26,6 @@ function buildCalendarWeeks(year: number, month0: number) {
   const first = new Date(year, month0, 1);
   const last  = new Date(year, month0 + 1, 0);
 
-  // začiatok na pondelku
   const start = new Date(first);
   const day = start.getDay(); // 0=ne
   const diff = (day === 0 ? -6 : 1 - day);
@@ -44,27 +41,47 @@ function buildCalendarWeeks(year: number, month0: number) {
 
   const weeks: { date: Date; inMonth: boolean }[][] = [];
   for (let i=0;i<cells.length; i+=7) weeks.push(cells.slice(i, i+7));
-  return weeks.filter(w => w.some(c => c.inMonth)); // len týždne s daným mesiacom
+  return weeks.filter(w => w.some(c => c.inMonth));
+}
+
+function ResetAllButton({ onDone }: { onDone: () => void }) {
+  async function resetAll() {
+    if (!confirm('Naozaj vymazať všetky sloty a rezervácie?')) return;
+    try {
+      await fetch('/api/slots', { method: 'DELETE' });
+      await fetch('/api/reservations', { method: 'DELETE' });
+      onDone();
+      alert('Dáta resetované.');
+    } catch (e: any) {
+      alert(e?.message || 'Reset zlyhal');
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={resetAll}
+      className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+      title="Vymaže všetky sloty a rezervácie"
+    >
+      Resetovať dáta
+    </button>
+  );
 }
 
 export default function AdminSlotsClient({ initial }: Props) {
-  // stav
   const [slots, setSlots] = React.useState<Slot[]>(
     (initial ?? []).slice().sort((a,b)=> a.date===b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date))
   );
 
-  // kotva kalendára = 1. deň mesiaca z prvého slotu, alebo dnešok
   const firstDate = slots[0]?.date ?? new Date().toISOString().slice(0,10);
   const [anchor, setAnchor] = React.useState<Date>(() => { const d = new Date(firstDate); d.setDate(1); return d; });
-  // zvolený deň = ak existuje, ten prvý; inak dnešok
   const [activeDate, setActiveDate] = React.useState<string>(firstDate);
 
-  const [newTimes, setNewTimes] = React.useState<string>(''); // "13:00, 14:00"
+  const [newTimes, setNewTimes] = React.useState<string>('');
   const [newCap, setNewCap]     = React.useState<number>(1);
 
   const weeks = React.useMemo(() => buildCalendarWeeks(anchor.getFullYear(), anchor.getMonth()), [anchor]);
 
-  // map dátum -> či sú sloty pre daný deň
   const datesWithSlots = React.useMemo(() => {
     const s = new Set<string>();
     for (const sl of slots) s.add(sl.date);
@@ -78,7 +95,6 @@ export default function AdminSlotsClient({ initial }: Props) {
   function prevMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()-1); setAnchor(d); }
   function nextMonth() { const d = new Date(anchor); d.setMonth(d.getMonth()+1); setAnchor(d); }
 
-  // ---------- IO helpery ----------
   async function refetch() {
     try {
       const res = await fetch('/api/slots?t=' + Date.now(), { cache: 'no-store' });
@@ -100,7 +116,8 @@ export default function AdminSlotsClient({ initial }: Props) {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error || 'Operácia zlyhala.');
-      if (Array.isArray(j?.slots)) setSlots(j.slots); else await refetch();
+      if (Array.isArray(j?.slots)) setSlots(j.slots);
+      else { await new Promise(r=>setTimeout(r,300)); await refetch(); }
     } catch (e:any) {
       alert(e?.message || 'Operácia zlyhala.');
     }
@@ -120,7 +137,8 @@ export default function AdminSlotsClient({ initial }: Props) {
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error || 'Pridanie časov zlyhalo.');
       setNewTimes('');
-      if (Array.isArray(j?.slots)) setSlots(j.slots); else await refetch();
+      if (Array.isArray(j?.slots)) setSlots(j.slots);
+      else { await new Promise(r=>setTimeout(r,300)); await refetch(); }
     } catch (e:any) {
       alert(e?.message || 'Pridanie časov zlyhalo.');
     }
@@ -135,7 +153,8 @@ export default function AdminSlotsClient({ initial }: Props) {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error || 'Operácia zlyhala.');
-      if (Array.isArray(j?.slots)) setSlots(j.slots); else await refetch();
+      if (Array.isArray(j?.slots)) setSlots(j.slots);
+      else { await new Promise(r=>setTimeout(r,300)); await refetch(); }
     } catch (e:any) {
       alert(e?.message || 'Operácia zlyhala.');
     }
@@ -151,27 +170,29 @@ export default function AdminSlotsClient({ initial }: Props) {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error || 'Uloženie kapacity zlyhalo.');
-      if (Array.isArray(j?.slots)) setSlots(j.slots); else await refetch();
+      if (Array.isArray(j?.slots)) setSlots(j.slots);
+      else { await new Promise(r=>setTimeout(r,300)); await refetch(); }
     } catch (e:any) {
       alert(e?.message || 'Uloženie kapacity zlyhalo.');
     }
   }
 
-  // ---------- UI ----------
   const grid7: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 };
   const cellH = 44;
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-2 text-2xl font-semibold">Správa slotov</h1>
-      <p className="mb-4 text-sm opacity-70">Kalendár + nastavenia pre konkrétny deň.</p>
+      <div className="mb-3 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Správa slotov</h1>
+        <ResetAllButton onDone={refetch} />
+      </div>
 
       {/* kalendár */}
       <div className="mb-4">
         <div className="mb-2 flex items-center justify-between">
-          <button onClick={prevMonth} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Predchádzajúci mesiac">‹</button>
+          <button onClick={()=>prevMonth()} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Predchádzajúci mesiac">‹</button>
           <div className="text-base font-semibold capitalize">{monthLabel(anchor)}</div>
-          <button onClick={nextMonth} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
+          <button onClick={()=>nextMonth()} className="rounded border px-3 py-1 hover:bg-gray-50" aria-label="Nasledujúci mesiac">›</button>
         </div>
 
         <div style={grid7} className="text-center text-xs mb-1">
@@ -193,13 +214,12 @@ export default function AdminSlotsClient({ initial }: Props) {
                 if (!inMonth) cls = "bg-gray-50 text-gray-300";
                 else if (isAct) cls = "bg-black text-white border-black";
                 else if (has) cls = "bg-white hover:bg-gray-100 cursor-pointer";
-                else cls = "bg-gray-100 text-gray-400";
+                else cls = "bg-gray-100 text-gray-400"; // stále kliknuteľné
 
                 return (
                   <button
                     type="button"
                     key={di}
-                    disabled={!inMonth || !has}
                     onClick={()=> setActiveDate(iso)}
                     title={iso}
                     className={`${common} ${cls}`}
@@ -217,7 +237,7 @@ export default function AdminSlotsClient({ initial }: Props) {
       {/* panel pre zvolený deň */}
       <section className="rounded border p-3 space-y-3">
         <div className="flex items-center justify-between">
-          <div className="text-sm">Deň: <strong>{activeDate}</strong></div>
+          <div className="text-sm">Deň: <strong>{new Date(activeDate).toLocaleDateString('sk-SK')}</strong></div>
           <div className="space-x-2">
             <button onClick={()=>lockDay(true)}  className="rounded border px-3 py-1 text-sm hover:bg-gray-50">Zamknúť deň</button>
             <button onClick={()=>lockDay(false)} className="rounded border px-3 py-1 text-sm hover:bg-gray-50">Odomknúť deň</button>
@@ -266,8 +286,9 @@ export default function AdminSlotsClient({ initial }: Props) {
                       title="Kapacita (uloží sa pri opustení poľa)"
                     />
                   </div>
-                  <div className="text-xs opacity-70 w-24">
+                  <div className="text-xs opacity-70 w-28">
                     {s.locked ? 'Zamknutý' : (s.booked ? 'Rezervovaný' : 'Voľné')}
+                    {typeof s.capacity === 'number' ? ` • ${s.bookedCount ?? 0}/${s.capacity}` : ''}
                   </div>
                   <div className="ml-auto space-x-2">
                     {s.locked

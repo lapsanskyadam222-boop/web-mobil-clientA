@@ -37,7 +37,6 @@ export async function POST(req: Request) {
     if (!slot)       return NextResponse.json({ error: 'Slot neexistuje.' }, { status: 404 });
     if (slot.locked) return NextResponse.json({ error: 'Slot je zamknutý.' }, { status: 409 });
 
-    // kapacitná kontrola
     const cap = typeof slot.capacity === 'number' ? slot.capacity : undefined;
     const used = slot.bookedCount ?? 0;
 
@@ -46,7 +45,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Tento čas je už plne obsadený.' }, { status: 409 });
       }
       slot.bookedCount = used + 1;
-      if (slot.bookedCount >= cap) slot.booked = true; // označ ako plne obsadené
+      if (slot.bookedCount >= cap) slot.booked = true;
     } else {
       if (slot.booked) {
         return NextResponse.json({ error: 'Slot je už rezervovaný.' }, { status: 409 });
@@ -100,5 +99,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, reservation }, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Neznáma chyba' }, { status: 500 });
+  }
+}
+
+export async function DELETE() {
+  try {
+    // vymaž všetky rezervácie a odbookuj všetky sloty
+    const slotsPayload = await readJson<SlotsPayload>(SLOTS_KEY, { slots: [], updatedAt: '' });
+    for (const s of slotsPayload.slots) {
+      s.booked = false;
+      s.bookedCount = 0;
+    }
+    slotsPayload.updatedAt = new Date().toISOString();
+
+    const emptyReservations: ReservationsPayload = {
+      reservations: [],
+      updatedAt: new Date().toISOString(),
+    };
+
+    await writeJson(SLOTS_KEY, slotsPayload);
+    await writeJson(RES_KEY, emptyReservations);
+
+    return NextResponse.json({ ok: true, cleared: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? 'DELETE /reservations zlyhalo' }, { status: 500 });
   }
 }
