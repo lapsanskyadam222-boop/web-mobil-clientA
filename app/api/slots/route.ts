@@ -5,15 +5,16 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { readJson, writeJson } from '@/lib/blobJson';
 
-type Slot = {
+export type Slot = {
   id: string;
-  date: string;
-  time: string;
+  date: string;   // YYYY-MM-DD
+  time: string;   // HH:mm
   locked?: boolean;
   booked?: boolean;
-  capacity?: number;
-  bookedCount?: number;
+  capacity?: number;       // voliteľná kapacita (>=1)
+  bookedCount?: number;    // ak by si neskôr chcel počítať obsadenosť
 };
+
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
 const KEY = 'slots.json';
@@ -23,22 +24,28 @@ const noCache = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
   Pragma: 'no-cache',
   Expires: '0',
-};
+} as const;
+
+function sortSlots(a: Slot, b: Slot) {
+  return a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date);
+}
 
 export async function GET() {
   try {
     const data = await readJson<SlotsPayload>(KEY, DEFAULT_SLOTS);
     if (!data.slots.length) await writeJson(KEY, data);
+    data.slots.sort(sortSlots);
     return NextResponse.json(data, { headers: noCache });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'GET /slots zlyhalo' }, { status: 500, headers: noCache });
   }
 }
 
-/** POST:
+/** POST
  *  - {date,time,capacity?}
- *  - {date,times[],capacity?}
+ *  - {date,times:[...],capacity?}
  *  - {slots:[{date,time,capacity?},...]}
+ *  => vždy vracia { ok:true, slots:[...] }
  */
 export async function POST(req: Request) {
   try {
@@ -62,7 +69,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Chýba date/time alebo times/slots.' }, { status: 400, headers: noCache });
     }
 
-    const created: Slot[] = [];
     for (const item of toCreate) {
       const newSlot: Slot = {
         id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
@@ -71,24 +77,30 @@ export async function POST(req: Request) {
         capacity: (typeof item.capacity === 'number' && item.capacity >= 1) ? Math.floor(item.capacity) : undefined,
       };
       data.slots.push(newSlot);
-      created.push(newSlot);
     }
 
+    data.slots.sort(sortSlots);
     data.updatedAt = new Date().toISOString();
     await writeJson(KEY, data);
 
-    return NextResponse.json({ ok: true, created }, { headers: noCache });
+    return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'POST /slots zlyhalo' }, { status: 500, headers: noCache });
   }
 }
 
+/** PATCH
+ *  - akcia na jednom slote: { id, action: 'lock' | 'unlock' | 'delete' }
+ *  - kapacita slotu:       { id, action: 'setCapacity', capacity }
+ *  - akcia na dni:         { date, action: 'lockDay' | 'unlockDay' }
+ *  => vždy vracia { ok:true, slots:[...] }
+ */
 export async function PATCH(req: Request) {
   try {
     const payload = await req.json();
     const data = await readJson<SlotsPayload>(KEY, DEFAULT_SLOTS);
 
-    // 1) operácie nad jedným slotom
+    // 1) Operácie nad jedným slotom
     if (payload?.id && typeof payload.id === 'string' && payload?.action) {
       const slot = data.slots.find(s => s.id === payload.id);
       if (!slot && payload.action !== 'delete') {
@@ -107,18 +119,19 @@ export async function PATCH(req: Request) {
         if (slot) slot.capacity = n;
       }
 
+      data.slots.sort(sortSlots);
       data.updatedAt = new Date().toISOString();
       await writeJson(KEY, data);
       return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
     }
 
-    // 2) lock/unlock celého dňa
+    // 2) Lock / unlock celého dňa
     if (payload?.date && typeof payload.date === 'string' &&
         (payload?.action === 'lockDay' || payload?.action === 'unlockDay')) {
       const lock = payload.action === 'lockDay';
-      for (const s of data.slots) {
-        if (s.date === payload.date) s.locked = lock;
-      }
+      for (const s of data.slots) if (s.date === payload.date) s.locked = lock;
+
+      data.slots.sort(sortSlots);
       data.updatedAt = new Date().toISOString();
       await writeJson(KEY, data);
       return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
