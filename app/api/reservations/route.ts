@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { readJson, writeJson } from '@/lib/blobJson';
+import { readJson, writeJsonLoose } from '@/lib/blobJson';
 import { buildICS } from '@/lib/ics';
 import { sendReservationEmail } from '@/lib/sendEmail';
 
 type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean };
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
-// e-mail je po novom povinný
+// e-mail je povinný
 type Reservation = {
   id: string;
   slotId: string;
@@ -20,7 +20,7 @@ type Reservation = {
 type ReservationsPayload = { reservations: Reservation[]; updatedAt: string };
 
 const SLOTS_KEY = 'slots.json';
-const RES_KEY = 'reservations.json';
+const RES_KEY   = 'reservations.json';
 
 export async function POST(req: Request) {
   try {
@@ -36,16 +36,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // Načítaj dáta zo "store"
+    // načítaj store
     const slotsPayload = await readJson<SlotsPayload>(SLOTS_KEY, { slots: [], updatedAt: '' });
     const resPayload   = await readJson<ReservationsPayload>(RES_KEY, { reservations: [], updatedAt: '' });
 
     const slot = slotsPayload.slots.find(s => s.id === slotId);
-    if (!slot)        return NextResponse.json({ error: 'Slot neexistuje.' }, { status: 404 });
-    if (slot.locked)  return NextResponse.json({ error: 'Slot je zamknutý.' }, { status: 409 });
-    if (slot.booked)  return NextResponse.json({ error: 'Slot je už rezervovaný.' }, { status: 409 });
+    if (!slot)       return NextResponse.json({ error: 'Slot neexistuje.' }, { status: 404 });
+    if (slot.locked) return NextResponse.json({ error: 'Slot je zamknutý.' }, { status: 409 });
+    if (slot.booked) return NextResponse.json({ error: 'Slot je už rezervovaný.' }, { status: 409 });
 
-    // Označ slot a zapíš rezerváciu
+    // označ slot a zapíš rezerváciu
     slot.booked = true;
     slotsPayload.updatedAt = new Date().toISOString();
 
@@ -62,10 +62,11 @@ export async function POST(req: Request) {
     resPayload.reservations.push(reservation);
     resPayload.updatedAt = new Date().toISOString();
 
-    await writeJson(SLOTS_KEY, slotsPayload);
-    await writeJson(RES_KEY, resPayload);
+    // tolerantný zápis (bez prísnej verifikácie)
+    await writeJsonLoose(SLOTS_KEY, slotsPayload);
+    await writeJsonLoose(RES_KEY,   resPayload);
 
-    // ICS pozvánka (1h)
+    // ICS – 60 min
     const startLocal = new Date(`${slot.date}T${slot.time}:00`);
     const ics = buildICS({
       title: `Rezervácia: ${reservation.name} (${reservation.phone})`,
@@ -80,7 +81,6 @@ export async function POST(req: Request) {
         `Termín: ${reservation.date} ${reservation.time}`,
     });
 
-    // Admin notifikácia
     await sendReservationEmail?.(
       `Nová rezervácia ${reservation.date} ${reservation.time} — ${reservation.name}`,
       `<p><strong>Nová rezervácia</strong></p>
