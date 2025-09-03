@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
-import { readJson, writeJson } from '@/lib/blobJson';
+import { readJson, writeJsonLoose } from '@/lib/blobJson';
 
 type Slot = {
   id: string;
@@ -12,7 +12,7 @@ type Slot = {
   locked?: boolean;
   booked?: boolean;     // legacy
   capacity?: number;    // >=1
-  bookedCount?: number; // derived
+  bookedCount?: number; // odvodené z legacy booked
 };
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
@@ -30,14 +30,14 @@ function makeId(date: string, time: string) {
   return `${date}_${time.split(':').join('')}`;
 }
 function isIsoDate(s?: string) { return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s); }
-function isHm(s?: string) { return !!s && /^\d{2}:\d{2}$/.test(s); }
+function isHm(s?: string)      { return !!s && /^\d{2}:\d{2}$/.test(s); }
 function findIndex(slots: Slot[], q: { date: string; time: string }) {
   return slots.findIndex(s => s.date === q.date && s.time === q.time);
 }
 function normalize(mut: SlotsPayload) {
   if (!Array.isArray(mut.slots)) mut.slots = [];
   for (const s of mut.slots) {
-    if (!Number.isFinite(s.capacity!)) s.capacity = 1;
+    if (!Number.isFinite(s.capacity!))    s.capacity    = 1;
     if (!Number.isFinite(s.bookedCount!)) s.bookedCount = s.booked ? 1 : 0;
   }
   return mut;
@@ -82,16 +82,18 @@ export async function POST(req: Request) {
         }
       }
     } else if ('date' in body && 'time' in body && isIsoDate(body.date) && isHm(body.time)) {
+      const date = body.date as string;
+      const time = body.time as string;
       const cap  = Number.isFinite(+body.capacity!) ? Math.max(1, +body.capacity!) : 1;
-      toAdd.push({ date: body.date!, time: body.time!, capacity: cap });
+      toAdd.push({ date, time, capacity: cap });
     }
 
     if (!toAdd.length) {
       return NextResponse.json({ error: 'Chýbajú platné sloty.' }, { status: 400, headers: noCache });
     }
 
-    // mutate in-memory → write → return mutated (bez druhého čítania)
     const data = await readFresh();
+
     for (const s of toAdd) {
       const id  = makeId(s.date, s.time);
       const idx = findIndex(data.slots, { date: s.date, time: s.time });
@@ -101,10 +103,13 @@ export async function POST(req: Request) {
         capacity: s.capacity, bookedCount: 0,
       };
       if (idx >= 0) data.slots[idx] = { ...data.slots[idx], ...base, capacity: s.capacity };
-      else data.slots.push(base);
+      else          data.slots.push(base);
     }
+
     data.updatedAt = new Date().toISOString();
-    await writeJson(KEY, data);
+    // tolerantná verifikácia – nikdy nehodíme 500 kvôli pomalej propagácii
+    await writeJsonLoose(KEY, data);
+
     normalize(data);
     return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
   } catch (e: any) {
@@ -129,7 +134,7 @@ export async function PATCH(req: Request) {
       const lock = p.action === 'lockDay';
       for (const s of data.slots) if (s.date === (p as any).date) s.locked = lock;
       data.updatedAt = new Date().toISOString();
-      await writeJson(KEY, data);
+      await writeJsonLoose(KEY, data);
       normalize(data);
       return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
     }
@@ -143,16 +148,17 @@ export async function PATCH(req: Request) {
     }
     if (idx < 0) return NextResponse.json({ error: 'Slot neexistuje.' }, { status: 404, headers: noCache });
 
-    if (p.action === 'delete')      data.slots.splice(idx, 1);
-    else if (p.action === 'lock')   data.slots[idx].locked = true;
-    else if (p.action === 'unlock') data.slots[idx].locked = false;
-    else if (p.action === 'capacity') {
+    if (p.action === 'delete') {
+      data.slots.splice(idx, 1);
+    } else if (p.action === 'lock' || p.action === 'unlock') {
+      data.slots[idx].locked = p.action === 'lock';
+    } else if (p.action === 'capacity') {
       const safe = Number.isFinite(+p.capacity!) ? Math.max(1, +p.capacity!) : 1;
       data.slots[idx].capacity = safe;
     }
 
     data.updatedAt = new Date().toISOString();
-    await writeJson(KEY, data);
+    await writeJsonLoose(KEY, data);
     normalize(data);
     return NextResponse.json({ ok: true, slots: data.slots }, { headers: noCache });
   } catch (e: any) {
@@ -164,7 +170,7 @@ export async function PATCH(req: Request) {
 export async function DELETE() {
   try {
     const empty: SlotsPayload = { slots: [], updatedAt: new Date().toISOString() };
-    await writeJson(KEY, empty);
+    await writeJsonLoose(KEY, empty);
     return NextResponse.json({ ok: true, slots: [] }, { headers: noCache });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'DELETE /slots zlyhalo' }, { status: 500, headers: noCache });
