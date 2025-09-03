@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type Slot = {
   id: string;
-  date: string;  // YYYY-MM-DD
-  time: string;  // HH:mm
+  date: string;   // YYYY-MM-DD
+  time: string;   // HH:mm
   locked?: boolean;
   booked?: boolean;
   capacity?: number;
@@ -14,141 +14,43 @@ type Slot = {
 
 type SlotsPayload = { slots: Slot[]; updatedAt: string };
 
+function sanitizeTime(v: string) {
+  // povoľ "930" → "09:30", "9:3" → "09:03", inak len HH:mm
+  const only = v.replace(/[^\d]/g, '').slice(0, 4);
+  if (only.length === 3) return `${only[0]}${only[1]}:${only[2]}0`;
+  if (only.length === 4) return `${only.slice(0, 2)}:${only.slice(2)}`;
+  if (/^\d{2}:\d{2}$/.test(v)) return v;
+  return v;
+}
+function isHm(s: string) { return /^\d{2}:\d{2}$/.test(s); }
+
 export default function AdminSlotsClient() {
-  const [slots, setSlots] = useState<Slot[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [slots, setSlots]   = useState<Slot[]>([]);
+  const [loading, setLoad]  = useState(true);
+  const [busy, setBusy]     = useState(false);
+  const [saved, setSaved]   = useState(false);
+  const [err, setErr]       = useState<string | null>(null);
 
-  // form
-  const [newDate, setNewDate] = useState('');
-  const [newTime, setNewTime] = useState('');
-  const [newCap,  setNewCap]  = useState(1);
+  // nový slot
+  const [date, setDate]     = useState('');
+  const [time, setTime]     = useState('');
+  const [cap,  setCap]      = useState<number>(1);
 
-  // ---- fetch on mount
+  async function refetch() {
+    const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
+    const j: SlotsPayload = await res.json();
+    setSlots(Array.isArray(j?.slots) ? j.slots : []);
+  }
+
   useEffect(() => {
-    let mounted = true;
     (async () => {
-      try {
-        const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
-        const j: SlotsPayload = await res.json();
-        if (!mounted) return;
-        setSlots(Array.isArray(j?.slots) ? j.slots : []);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+      try { await refetch(); } finally { setLoad(false); }
     })();
-    return () => { mounted = false; };
   }, []);
 
-  // ---- debounced refresh (jedno refetch po sérii operácií)
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function scheduleRefresh(ms = 350) {
-    if (refreshTimer.current) clearTimeout(refreshTimer.current);
-    refreshTimer.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
-        const j: SlotsPayload = await res.json();
-        setSlots(Array.isArray(j?.slots) ? j.slots : []);
-      } finally {
-        refreshTimer.current = null;
-      }
-    }, ms);
-  }
+  function flashSaved() { setSaved(true); setTimeout(() => setSaved(false), 900); }
 
-  // ---- helpers (optimistické úpravy)
-  function upsertLocal(s: Slot) {
-    setSlots(curr => {
-      const i = curr.findIndex(x => x.id === s.id);
-      if (i >= 0) {
-        const next = curr.slice(); next[i] = { ...curr[i], ...s }; return next;
-      }
-      return curr.concat(s);
-    });
-  }
-  function updateLocal(id: string, patch: Partial<Slot>) {
-    setSlots(curr => {
-      const i = curr.findIndex(x => x.id === id);
-      if (i < 0) return curr;
-      const next = curr.slice(); next[i] = { ...curr[i], ...patch }; return next;
-    });
-  }
-  function removeLocal(id: string) {
-    setSlots(curr => curr.filter(s => s.id !== id));
-  }
-
-  // ---- actions
-  async function addOne() {
-    if (!newDate || !newTime) return alert('Zadaj dátum a čas.');
-    const cap = Math.max(1, Number.isFinite(+newCap) ? +newCap : 1);
-
-    // optimisticky
-    const temp: Slot = {
-      id: `${newDate}_${newTime.replace(':','')}`,
-      date: newDate, time: newTime, locked: false, booked: false, capacity: cap, bookedCount: 0,
-    };
-    upsertLocal(temp);
-
-    try {
-      const res = await fetch('/api/slots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: newDate, time: newTime, capacity: cap }),
-      });
-      if (!res.ok) throw new Error((await res.json())?.error || 'POST failed');
-      // server aj tak vracia celý zoznam – ale namiesto okamžitého refetchnutia
-      // necháme debounce, aby sa operácie dali naskladať
-      scheduleRefresh();
-      setNewTime('');
-    } catch (e: any) {
-      alert(e?.message || 'Chyba pri pridávaní');
-      // rollback – stiahne sa pri ďalšom refreshi
-      scheduleRefresh(0);
-    }
-  }
-
-  async function toggleLock(s: Slot) {
-    updateLocal(s.id, { locked: !s.locked });
-    try {
-      await fetch('/api/slots', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: s.id, action: s.locked ? 'unlock' : 'lock' }),
-      });
-      scheduleRefresh();
-    } catch {
-      scheduleRefresh(0);
-    }
-  }
-
-  async function changeCap(s: Slot, cap: number) {
-    const safe = Math.max(1, Number.isFinite(+cap) ? +cap : 1);
-    updateLocal(s.id, { capacity: safe });
-    try {
-      await fetch('/api/slots', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: s.id, action: 'capacity', capacity: safe }),
-      });
-      scheduleRefresh();
-    } catch {
-      scheduleRefresh(0);
-    }
-  }
-
-  async function removeOne(s: Slot) {
-    removeLocal(s.id);
-    try {
-      await fetch('/api/slots', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: s.id, action: 'delete' }),
-      });
-      scheduleRefresh();
-    } catch {
-      scheduleRefresh(0);
-    }
-  }
-
-  // ---- UI
+  // zoskupenie podľa dňa
   const grouped = useMemo(() => {
     const by: Record<string, Slot[]> = {};
     for (const s of slots) (by[s.date] ||= []).push(s);
@@ -156,61 +58,178 @@ export default function AdminSlotsClient() {
     return Object.entries(by).sort((a,b)=> a[0]<b[0]?-1:1);
   }, [slots]);
 
-  return (
-    <main className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Správa slotov</h1>
+  // ---- actions (po každej operácii urobíme tvrdý refetch = stabilita)
+  async function addOne() {
+    if (!date) return alert('Zadaj dátum.');
+    const t = sanitizeTime(time);
+    if (!isHm(t)) return alert('Čas musí byť vo formáte HH:MM');
+    const safeCap = Math.max(1, Number.isFinite(+cap) ? +cap : 1);
 
-      <div className="mb-4 flex gap-2 items-end flex-wrap">
-        <label className="block">
-          <span className="block text-xs mb-1">Dátum</span>
-          <input type="date" value={newDate} onChange={e=>setNewDate(e.target.value)}
-                 className="border rounded px-3 py-2" />
-        </label>
-        <label className="block">
-          <span className="block text-xs mb-1">Čas</span>
-          <input type="time" value={newTime} onChange={e=>setNewTime(e.target.value)}
-                 className="border rounded px-3 py-2" />
-        </label>
-        <label className="block">
-          <span className="block text-xs mb-1">Kapacita</span>
-          <input type="number" min={1} value={newCap}
-                 onChange={e=>setNewCap(Math.max(1, Number(e.target.value)||1))}
-                 className="border rounded px-3 py-2 w-24" />
-        </label>
-        <button onClick={addOne} className="rounded bg-black text-white px-4 py-2">Pridať 1</button>
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch('/api/slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, time: t, capacity: safeCap }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || 'Pridanie zlyhalo.');
+      await refetch();
+      setTime('');
+      flashSaved();
+    } catch (e: any) {
+      setErr(e?.message || 'Pridanie zlyhalo.');
+    } finally { setBusy(false); }
+  }
+
+  async function changeCap(s: Slot, next: number) {
+    const safe = Math.max(1, Number.isFinite(+next) ? +next : 1);
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: s.id, action: 'capacity', capacity: safe }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || 'Zmena kapacity zlyhala.');
+      await refetch();
+      flashSaved();
+    } catch (e: any) {
+      setErr(e?.message || 'Zmena kapacity zlyhala.');
+    } finally { setBusy(false); }
+  }
+
+  async function toggleLock(s: Slot) {
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: s.id, action: s.locked ? 'unlock' : 'lock' }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || 'Zamknutie/odomknutie zlyhalo.');
+      await refetch();
+      flashSaved();
+    } catch (e: any) {
+      setErr(e?.message || 'Zamknutie/odomknutie zlyhalo.');
+    } finally { setBusy(false); }
+  }
+
+  async function removeOne(s: Slot) {
+    if (!confirm('Vymazať tento čas?')) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: s.id, action: 'delete' }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || 'Vymazanie zlyhalo.');
+      await refetch();
+      flashSaved();
+    } catch (e: any) {
+      setErr(e?.message || 'Vymazanie zlyhalo.');
+    } finally { setBusy(false); }
+  }
+
+  async function deleteAll() {
+    if (!confirm('NAOZAJ vymazať všetky sloty?')) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch('/api/slots', { method: 'DELETE' });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || 'Hromadné vymazanie zlyhalo.');
+      await refetch();
+      flashSaved();
+    } catch (e: any) {
+      setErr(e?.message || 'Hromadné vymazanie zlyhalo.');
+    } finally { setBusy(false); }
+  }
+
+  if (loading) return <main className="p-6">Načítavam…</main>;
+
+  return (
+    <main className="mx-auto max-w-2xl p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Správa slotov</h1>
+        <div className="flex items-center gap-3">
+          {saved && <span className="text-sm text-green-600">Uložené ✓</span>}
+          <button onClick={deleteAll} disabled={busy || !slots.length}
+                  className="rounded border border-red-600 text-red-600 px-3 py-1.5 hover:bg-red-50 disabled:opacity-50">
+            Vymazať všetky
+          </button>
+        </div>
       </div>
 
-      {loading ? <p>Načítavam…</p> : (
-        <div className="space-y-4">
-          {grouped.map(([date, list]) => (
-            <div key={date} className="rounded border">
-              <div className="px-3 py-2 text-sm font-semibold bg-gray-50">{date}</div>
-              <div className="p-3 space-y-2">
-                {list.map(s => (
-                  <div key={s.id} className="flex items-center gap-2">
-                    <div className="w-16">{s.time}</div>
-                    <div className="w-28">
-                      <input type="number" min={1} value={s.capacity ?? 1}
-                        onChange={e=>changeCap(s, Number(e.target.value)||1)}
-                        className="border rounded px-2 py-1 w-24" />
-                    </div>
-                    <div className="text-xs opacity-70 w-24">
-                      {s.locked ? 'Zamknutý' : 'Voľné'}
-                    </div>
-                    <button onClick={()=>toggleLock(s)} className="rounded border px-2 py-1">
-                      {s.locked ? 'Odomknúť' : 'Zamknúť'}
-                    </button>
-                    <button onClick={()=>removeOne(s)} className="rounded border px-2 py-1">
-                      Vymazať
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-          {!grouped.length && <p className="text-sm opacity-70">Zatiaľ žiadne sloty.</p>}
+      {err && <p className="text-red-600 text-sm">{err}</p>}
+
+      <div className="rounded-2xl border p-4 space-y-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="block text-xs mb-1">Dátum</span>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+                   className="border rounded px-3 py-2" disabled={busy} />
+          </label>
+          <label className="block">
+            <span className="block text-xs mb-1">Čas</span>
+            <input
+              inputMode="numeric" placeholder="hh:mm"
+              value={time}
+              onChange={e => setTime(sanitizeTime(e.target.value))}
+              className="border rounded px-3 py-2"
+              disabled={busy}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-xs mb-1">Kapacita</span>
+            <input type="number" min={1} value={cap}
+                   onChange={e=>setCap(Math.max(1, Number(e.target.value)||1))}
+                   className="border rounded px-3 py-2 w-24" disabled={busy}/>
+          </label>
+          <button onClick={addOne}
+                  className="rounded bg-black text-white px-4 py-2 hover:bg-gray-800 disabled:opacity-50"
+                  disabled={busy || !date || !isHm(sanitizeTime(time))}>
+            Pridať 1
+          </button>
         </div>
-      )}
+        <p className="text-xs opacity-70">* Víkendy sú povolené. Čas píš ako 09:30, 13:00…</p>
+      </div>
+
+      <div className="space-y-4">
+        {grouped.map(([d, list]) => (
+          <div key={d} className="rounded border">
+            <div className="px-3 py-2 text-sm font-semibold bg-gray-50">{d}</div>
+            <div className="p-3 space-y-2">
+              {list.map(s => (
+                <div key={s.id} className="flex items-center gap-2">
+                  <div className="w-16">{s.time}</div>
+                  <div className="w-28">
+                    <input
+                      type="number" min={1} value={s.capacity ?? 1}
+                      onChange={e=>changeCap(s, Number(e.target.value)||1)}
+                      className="border rounded px-2 py-1 w-24" disabled={busy}
+                    />
+                  </div>
+                  <div className="text-xs opacity-70 w-28">
+                    {s.booked ? 'Rezervované' : (s.locked ? 'Zamknuté' : 'Voľné')}
+                  </div>
+                  <button onClick={()=>toggleLock(s)} className="rounded border px-2 py-1" disabled={busy}>
+                    {s.locked ? 'Odomknúť' : 'Zamknúť'}
+                  </button>
+                  <button onClick={()=>removeOne(s)} className="rounded border px-2 py-1" disabled={busy}>
+                    Vymazať
+                  </button>
+                </div>
+              ))}
+              {!list.length && <div className="text-sm opacity-70">–</div>}
+            </div>
+          </div>
+        ))}
+        {!grouped.length && <p className="text-sm opacity-70">Zatiaľ žiadne sloty.</p>}
+      </div>
     </main>
   );
 }
