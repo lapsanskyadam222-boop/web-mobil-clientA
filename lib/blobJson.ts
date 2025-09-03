@@ -1,12 +1,21 @@
 // lib/blobJson.ts
 import { list, put } from '@vercel/blob';
 
-/** Vždy čítaj najnovší JSON s cache-busterom. */
+/** Malá pauza (ms). */
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Bezpečné čítanie JSON z Vercel Blob s cache-busterom.
+ * - nájde prvý objekt s názvom `key` (alebo prvý pod prefixom)
+ * - vždy fetchne s ?ts= aby obišiel edge cache
+ */
 export async function readJson<T>(key: string, fallback: T): Promise<T> {
   try {
     const { blobs } = await list({ prefix: key });
+
     const entry =
-      blobs.find(b => b.pathname === key || b.url.endsWith('/' + key)) ?? blobs[0];
+      blobs.find(b => b.pathname === key || b.url.endsWith('/' + key)) ??
+      blobs[0];
 
     if (!entry) return fallback;
 
@@ -19,47 +28,57 @@ export async function readJson<T>(key: string, fallback: T): Promise<T> {
   }
 }
 
-async function writeRaw(key: string, data: unknown, token: string) {
+/**
+ * Jednoduchý (tolerantný) zápis do Blob:
+ * - žiadna prísna verifikácia, len jeden krát zapíše
+ * - addRandomSuffix: false => prepisuje ten istý key
+ * - po zápise krátka pauza (kvôli eventual consistency)
+ */
+export async function writeJsonLoose<T>(key: string, data: T): Promise<void> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) throw new Error('BLOB_READ_WRITE_TOKEN chýba vo Vercel env.');
+
   await put(key, JSON.stringify(data, null, 2), {
     access: 'public',
     contentType: 'application/json',
     addRandomSuffix: false,
     token,
   });
+
+  // krátke počkanie, aby sa nové dáta rozšírili
+  await sleep(250);
 }
 
 /**
- * Zápis s krátkou verifikáciou: 3 pokusy zápisu, po každom 3 verifikácie.
- * Držíme časy nízke, aby UI nevyzeralo spomalene.
+ * (Voliteľné) prísnejší zápis s pokusmi a ľahkou verifikáciou.
+ * Ak ho nebudeš používať, kľudne ignoruj.
  */
-export async function writeJson<T extends { updatedAt?: string }>(
-  key: string,
-  data: T,
-  tries = 3
-): Promise<void> {
+export async function writeJsonStrict<T>(key: string, data: T, tries = 3): Promise<void> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) throw new Error('BLOB_READ_WRITE_TOKEN chýba vo Vercel env.');
 
-  const expectedStamp = (data as any)?.updatedAt;
-
   let lastErr: unknown;
 
-  for (let i = 0; i < Math.max(1, tries); i++) {
+  for (let i = 0; i < tries; i++) {
     try {
-      await writeRaw(key, data, token);
+      await put(key, JSON.stringify(data, null, 2), {
+        access: 'public',
+        contentType: 'application/json',
+        addRandomSuffix: false,
+        token,
+      });
 
-      // krátka verifikácia (3 pokusy: 120ms, 240ms, 480ms)
-      for (let v = 0; v < 3; v++) {
-        const fresh = await readJson<any>(key, null as any);
-        if (!expectedStamp || (fresh && fresh.updatedAt === expectedStamp)) return;
-        await new Promise(r => setTimeout(r, 120 * Math.pow(2, v)));
+      // krátka verifikácia: prečítame späť a pozrieme updatedAt, ak existuje
+      await sleep(200 + i * 150);
+      const fresh = await readJson<any>(key, null as any);
+      if (!fresh) throw new Error('verify read failed');
+      if ((data as any)?.updatedAt && fresh?.updatedAt !== (data as any).updatedAt) {
+        throw new Error('verify mismatch');
       }
-      // ak verifikácia neprešla, skúsime ešte jeden celý cyklus
-      throw new Error('verify-after-write');
+      return;
     } catch (e) {
       lastErr = e;
-      // krátky backoff medzi cyklami zápisu (150ms, 300ms…)
-      await new Promise(r => setTimeout(r, 150 * Math.pow(2, i)));
+      await sleep(200 + i * 200);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('Zápis do Blobu zlyhal.');
