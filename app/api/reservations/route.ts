@@ -1,7 +1,3 @@
-// app/api/reservations/route.ts
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
 import { buildICS } from '@/lib/ics';
@@ -9,71 +5,65 @@ import { sendReservationEmail } from '@/lib/sendEmail';
 
 export async function POST(req: Request) {
   try {
-    const { slotId, name, email, phone } = await req.json();
+    const body = await req.json();
+    const { slotId, name, email, phone } = body as {
+      slotId?: string; name?: string; email?: string; phone?: string;
+    };
 
     if (!slotId || !name || !email || !phone) {
-      return NextResponse.json({ error: 'Chýba slotId, meno, e-mail alebo telefón.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Chýba slotId, meno, e-mail alebo telefón.' },
+        { status: 400 }
+      );
     }
 
     const supa = getServiceClient();
 
-    // 1) Skús „rezervovať“ – zvýšiť booked_count iba ak je voľné a nie je locked
-    const { data: updated, error: upErr } = await supa
-      .from('slots')
-      .update({ booked_count: supa.rpc('noop') as unknown as number }) // placeholder, hneď nižšie real update
-      .eq('id', slotId)
-      .select();
+    // 🔴 Zavoláme atómovú DB funkciu
+    const { data, error } = await supa.rpc('book_slot', {
+      p_slot_id: slotId,
+      p_name: name.trim(),
+      p_email: email.trim(),
+      p_phone: phone.trim(),
+    });
 
-    // Poznámka: Supabase JS nevie transakcie; spravíme to v dvoch krokoch s guardom
-    // Najprv over aktuálny slot:
-    const { data: slotArr, error: readErr } = await supa.from('slots')
-      .select('*')
-      .eq('id', slotId)
-      .limit(1);
-
-    if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
-    const slot = slotArr?.[0];
-    if (!slot) return NextResponse.json({ error: 'Slot neexistuje.' }, { status: 404 });
-    if (slot.locked) return NextResponse.json({ error: 'Slot je zamknutý.' }, { status: 409 });
-    if (slot.booked_count >= slot.capacity) {
-      return NextResponse.json({ error: 'Slot je plný.' }, { status: 409 });
+    if (error) {
+      // ak funkcia vyhodila našu hlášku, pošleme 409
+      if (String(error.message || '').includes('SLOT_NOT_AVAILABLE')) {
+        return NextResponse.json({ error: 'Tento termín už nie je dostupný.' }, { status: 409 });
+      }
+      console.error('book_slot error:', error);
+      return NextResponse.json({ error: 'Rezervácia zlyhala.' }, { status: 500 });
     }
 
-    // „Optimistic guard“: zvýš booked_count ak ešte nie je plno
-    const { data: after, error: incErr } = await supa.rpc('increment_booked_count_if_free', { p_id: slotId });
-    if (incErr) return NextResponse.json({ error: incErr.message }, { status: 500 });
-    if (!after || after.length === 0) {
-      // niekto nás predbehol
-      return NextResponse.json({ error: 'Slot je už plný alebo zamknutý.' }, { status: 409 });
-    }
+    // data je pole (návrat z RETURNS TABLE) – zober prvý riadok
+    const resv = Array.isArray(data) ? data[0] : data;
+    // resv obsahuje: id, slot_id, date, time, name, email, phone, created_at
 
-    // 2) Zapíš rezerváciu
-    const { data: resv, error: insErr } = await supa
-      .from('reservations')
-      .insert({ slot_id: slotId, name: name.trim(), email: email.trim(), phone: phone.trim() })
-      .select()
-      .single();
-
-    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
-
-    // 3) Email + ICS (dobrovoľné – ponechávam tvoju existujúcu logiku)
-    const startLocal = new Date(`${slot.date}T${slot.time}:00`);
+    // ICS pozvánka (1h)
+    const startLocal = new Date(`${resv.date}T${resv.time}:00`);
     const ics = buildICS({
-      title: `Rezervácia: ${name} (${phone})`,
+      title: `Rezervácia: ${resv.name} (${resv.phone})`,
       start: startLocal,
       durationMinutes: 60,
       location: 'Lezenie s Nicol',
       description:
-        `Rezervácia cez web.\nMeno: ${name}\nE-mail: ${email}\nTelefón: ${phone}\nTermín: ${slot.date} ${slot.time}`,
+        `Rezervácia cez web.\n` +
+        `Meno: ${resv.name}\n` +
+        `E-mail: ${resv.email}\n` +
+        `Telefón: ${resv.phone}\n` +
+        `Termín: ${resv.date} ${resv.time}`,
     });
+
+    // Admin e-mail (nechávam voliteľné – ak je správne nastavený RESEND)
     await sendReservationEmail?.(
-      `Nová rezervácia ${slot.date} ${slot.time} — ${name}`,
+      `Nová rezervácia ${resv.date} ${resv.time} — ${resv.name}`,
       `<p><strong>Nová rezervácia</strong></p>
        <ul>
-         <li><b>Termín:</b> ${slot.date} ${slot.time}</li>
-         <li><b>Meno:</b> ${name}</li>
-         <li><b>E-mail:</b> ${email}</li>
-         <li><b>Telefón:</b> ${phone}</li>
+         <li><b>Termín:</b> ${resv.date} ${resv.time}</li>
+         <li><b>Meno:</b> ${resv.name}</li>
+         <li><b>E-mail:</b> ${resv.email}</li>
+         <li><b>Telefón:</b> ${resv.phone}</li>
        </ul>`,
       { filename: 'rezervacia.ics', content: ics }
     );
