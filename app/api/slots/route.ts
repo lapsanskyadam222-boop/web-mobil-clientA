@@ -1,101 +1,154 @@
-import { NextResponse } from "next/server";
-import { getServiceClient, getAnonClient } from "@/lib/supabase";
+// app/api/slots/route.ts
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+import { NextResponse } from 'next/server';
+import { getServiceClient } from '@/lib/supabase';
 
 type Slot = {
-  id: string;
-  date: string;   // YYYY-MM-DD
-  time: string;   // HH:mm
-  locked?: boolean;
-  capacity?: number;
-  bookedCount?: number;
+  id: string;           // "YYYY-MM-DD_HHMM"
+  date: string;         // YYYY-MM-DD
+  time: string;         // HH:MM (typ hm)
+  locked: boolean;
+  capacity: number;
+  booked_count: number;
 };
 
-const TABLE = "slots";
+const noCache = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  Pragma: 'no-cache',
+  Expires: '0',
+};
 
-/* GET – všetky sloty */
+const isIsoDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const isHm      = (s?: string) => !!s && /^\d{2}:\d{2}$/.test(s);
+const makeId    = (date: string, time: string) => `${date}_${time.replace(':','')}`;
+
+/* GET – všetky sloty (pre admin), zoradené */
 export async function GET() {
-  try {
-    const supabase = getAnonClient();
-    const { data, error } = await supabase.from(TABLE).select("*").order("date").order("time");
-    if (error) throw error;
-    return NextResponse.json({ slots: data ?? [] }, { headers: { "Cache-Control": "no-store" } });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "GET slots error" }, { status: 500 });
-  }
+  const supa = getServiceClient();
+  const { data, error } = await supa
+    .from('slots')
+    .select('*')
+    .order('date', { ascending: true })
+    .order('time', { ascending: true });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: noCache });
+  return NextResponse.json({ slots: data ?? [] }, { headers: noCache });
 }
 
-/* POST – pridanie slotov */
+/* POST – pridanie: 1 slot | {date, times[]} | {slots[]} */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const supabase = getServiceClient();
+    const body = await req.json() as
+      | { date?: string; time?: string; capacity?: number }
+      | { date?: string; times?: string[]; capacity?: number }
+      | { slots?: { date: string; time: string; capacity?: number }[] };
 
-    let toInsert: Slot[] = [];
+    const toAdd: { id: string; date: string; time: string; capacity: number }[] = [];
 
-    if (Array.isArray(body.slots)) {
-      toInsert = body.slots;
-    } else if (body.date && Array.isArray(body.times)) {
-      toInsert = body.times.map((t: string) => ({
-        id: `${body.date}_${t.replace(":", "")}`,
-        date: body.date,
-        time: t,
-        capacity: body.capacity ?? 1,
-        bookedCount: 0,
-        locked: false,
-      }));
-    } else if (body.date && body.time) {
-      toInsert = [{
-        id: `${body.date}_${body.time.replace(":", "")}`,
-        date: body.date,
-        time: body.time,
-        capacity: body.capacity ?? 1,
-        bookedCount: 0,
-        locked: false,
-      }];
+    if ('slots' in body && Array.isArray(body.slots)) {
+      for (const s of body.slots) {
+        if (isIsoDate(s?.date) && isHm(s?.time)) {
+          const cap = Number.isFinite(+s.capacity!) ? Math.max(1, +s.capacity!) : 1;
+          toAdd.push({ id: makeId(s.date, s.time), date: s.date, time: s.time, capacity: cap });
+        }
+      }
+    } else if ('times' in body && isIsoDate(body.date) && Array.isArray(body.times)) {
+      for (const t of body.times) {
+        if (isHm(t)) {
+          const cap = Number.isFinite(+body.capacity!) ? Math.max(1, +body.capacity!) : 1;
+          toAdd.push({ id: makeId(body.date!, t), date: body.date!, time: t, capacity: cap });
+        }
+      }
+    } else if ('date' in body && 'time' in body && isIsoDate(body.date) && isHm(body.time)) {
+      const cap = Number.isFinite(+body.capacity!) ? Math.max(1, +body.capacity!) : 1;
+      toAdd.push({ id: makeId(body.date!, body.time!), date: body.date!, time: body.time!, capacity: cap });
     }
 
-    if (!toInsert.length) {
-      return NextResponse.json({ error: "Chýbajú platné sloty" }, { status: 400 });
+    if (!toAdd.length) {
+      return NextResponse.json({ error: 'Chýbajú platné sloty.' }, { status: 400, headers: noCache });
     }
 
-    const { error } = await supabase.from(TABLE).upsert(toInsert, { onConflict: "id" });
-    if (error) throw error;
+    const supa = getServiceClient();
 
-    return NextResponse.json({ ok: true, created: toInsert });
+    // upsert podľa PK id; necháme defaulty na DB
+    const { error } = await supa
+      .from('slots')
+      .upsert(
+        toAdd.map(s => ({
+          id: s.id,
+          date: s.date,
+          time: s.time,
+          capacity: s.capacity,
+          locked: false,
+        })),
+        { onConflict: 'id' }
+      );
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: noCache });
+
+    // vrátime čerstvý zoznam
+    const { data, error: e2 } = await supa
+      .from('slots')
+      .select('*')
+      .order('date', { ascending: true })
+      .order('time', { ascending: true });
+
+    if (e2) return NextResponse.json({ error: e2.message }, { status: 500, headers: noCache });
+    return NextResponse.json({ ok: true, slots: data ?? [] }, { headers: noCache });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "POST slots error" }, { status: 500 });
+    return NextResponse.json({ error: e?.message || 'POST /slots zlyhalo' }, { status: 500, headers: noCache });
   }
 }
 
-/* PATCH – update (lock, unlock, delete, capacity) */
+/* PATCH – {id, action: 'delete'|'lock'|'unlock'|'capacity', capacity?} */
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json();
-    const supabase = getServiceClient();
+    const p = await req.json() as
+      { id?: string; action: 'delete'|'lock'|'unlock'|'capacity'; capacity?: number } |
+      { date: string; action: 'lockDay'|'unlockDay' };
 
-    if (body.action === "delete") {
-      await supabase.from(TABLE).delete().eq("id", body.id);
-    } else if (body.action === "lock") {
-      await supabase.from(TABLE).update({ locked: true }).eq("id", body.id);
-    } else if (body.action === "unlock") {
-      await supabase.from(TABLE).update({ locked: false }).eq("id", body.id);
-    } else if (body.action === "capacity") {
-      await supabase.from(TABLE).update({ capacity: body.capacity }).eq("id", body.id);
+    const supa = getServiceClient();
+
+    if ('date' in p && (p.action === 'lockDay' || p.action === 'unlockDay')) {
+      if (!isIsoDate(p.date)) return NextResponse.json({ error: 'Chýba platný date.' }, { status: 400, headers: noCache });
+      const lock = p.action === 'lockDay';
+      const { error } = await supa.from('slots').update({ locked: lock }).eq('date', p.date);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: noCache });
+    } else if ('id' in p && p.id) {
+      if (p.action === 'delete') {
+        const { error } = await supa.from('slots').delete().eq('id', p.id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: noCache });
+      } else if (p.action === 'lock' || p.action === 'unlock') {
+        const { error } = await supa.from('slots').update({ locked: p.action === 'lock' }).eq('id', p.id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: noCache });
+      } else if (p.action === 'capacity') {
+        const cap = Math.max(1, Number.isFinite(+p.capacity!) ? +p.capacity! : 1);
+        const { error } = await supa.from('slots').update({ capacity: cap }).eq('id', p.id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: noCache });
+      }
+    } else {
+      return NextResponse.json({ error: 'Neplatná požiadavka.' }, { status: 400, headers: noCache });
     }
 
-    return NextResponse.json({ ok: true });
+    const { data, error: e2 } = await supa
+      .from('slots')
+      .select('*')
+      .order('date', { ascending: true })
+      .order('time', { ascending: true });
+
+    if (e2) return NextResponse.json({ error: e2.message }, { status: 500, headers: noCache });
+    return NextResponse.json({ ok: true, slots: data ?? [] }, { headers: noCache });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "PATCH slots error" }, { status: 500 });
+    return NextResponse.json({ error: e?.message || 'PATCH /slots zlyhalo' }, { status: 500, headers: noCache });
   }
 }
 
-/* DELETE – wipe všetkých slotov */
+/* DELETE – vymazanie všetkých slotov */
 export async function DELETE() {
-  try {
-    const supabase = getServiceClient();
-    await supabase.from(TABLE).delete().neq("id", ""); // vymaže všetko
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "DELETE slots error" }, { status: 500 });
-  }
+  const supa = getServiceClient();
+  const { error } = await supa.from('slots').delete().neq('id', ''); // vymaž všetko
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: noCache });
+  return NextResponse.json({ ok: true, slots: [] }, { headers: noCache });
 }
