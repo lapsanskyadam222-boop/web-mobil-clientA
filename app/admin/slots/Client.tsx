@@ -8,7 +8,8 @@ type Slot = {
   time: string;
   locked: boolean;
   capacity: number;
-  booked_count: number;
+  bookedCount: number;
+  booked: boolean; // derived on server (booked_count >= capacity)
 };
 
 export default function AdminSlotsClient() {
@@ -53,12 +54,12 @@ export default function AdminSlotsClient() {
       }
     }, ms);
   }
+
   function flashSaved() {
     setSaved(true);
     setTimeout(() => setSaved(false), 700);
   }
 
-  // optimistic helpers
   function upsertLocal(s: Slot) {
     setSlots((curr) => {
       const i = curr.findIndex((x) => x.id === s.id);
@@ -83,7 +84,6 @@ export default function AdminSlotsClient() {
     setSlots((curr) => curr.filter((s) => s.id !== id));
   }
 
-  // actions
   async function addOne() {
     if (!date || !time) return alert('Zadaj dátum aj čas.');
     const safeCap = Math.max(1, Number.isFinite(+cap) ? +cap : 1);
@@ -94,10 +94,10 @@ export default function AdminSlotsClient() {
       time,
       locked: false,
       capacity: safeCap,
-      booked_count: 0,
+      bookedCount: 0,
+      booked: false,
     };
     upsertLocal(temp);
-
     setBusy(true);
     try {
       const res = await fetch('/api/slots', {
@@ -106,8 +106,8 @@ export default function AdminSlotsClient() {
         body: JSON.stringify({ date, time, capacity: safeCap }),
       });
       if (!res.ok) throw new Error((await res.json())?.error || 'POST failed');
-      setTime('');
       scheduleRefetch();
+      setTime('');
       flashSaved();
     } catch (e: any) {
       alert(e?.message || 'Chyba pri pridávaní');
@@ -132,22 +132,6 @@ export default function AdminSlotsClient() {
     }
   }
 
-  async function freeSlot(s: Slot) {
-    // vizuálne: reset počítadla + odomknúť
-    patchLocal(s.id, { locked: false, booked_count: 0 });
-    try {
-      await fetch('/api/slots', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: s.id, action: 'free' }),
-      });
-      scheduleRefetch();
-      flashSaved();
-    } catch {
-      scheduleRefetch(0);
-    }
-  }
-
   async function changeCap(s: Slot, value: number) {
     const safe = Math.max(1, Number.isFinite(+value) ? +value : 1);
     patchLocal(s.id, { capacity: safe });
@@ -156,6 +140,22 @@ export default function AdminSlotsClient() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: s.id, action: 'capacity', capacity: safe }),
+      });
+      scheduleRefetch();
+      flashSaved();
+    } catch {
+      scheduleRefetch(0);
+    }
+  }
+
+  async function freeSlot(s: Slot) {
+    // optimisticky: sprav z toho voľný slot
+    patchLocal(s.id, { bookedCount: 0, booked: false, locked: false });
+    try {
+      await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: s.id, action: 'free' }),
       });
       scheduleRefetch();
       flashSaved();
@@ -199,21 +199,11 @@ export default function AdminSlotsClient() {
       <div className="flex gap-2 items-end flex-wrap">
         <label className="block">
           <span className="block text-xs mb-1">Dátum</span>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="border rounded px-3 py-2"
-          />
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border rounded px-3 py-2" />
         </label>
         <label className="block">
           <span className="block text-xs mb-1">Čas</span>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="border rounded px-3 py-2"
-          />
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="border rounded px-3 py-2" />
         </label>
         <label className="block">
           <span className="block text-xs mb-1">Kapacita</span>
@@ -225,11 +215,7 @@ export default function AdminSlotsClient() {
             className="border rounded px-3 py-2 w-24"
           />
         </label>
-        <button
-          onClick={addOne}
-          disabled={busy}
-          className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
-        >
+        <button onClick={addOne} disabled={busy} className="rounded bg-black text-white px-4 py-2 disabled:opacity-50">
           Pridať 1
         </button>
       </div>
@@ -240,18 +226,22 @@ export default function AdminSlotsClient() {
             <div className="px-3 py-2 text-sm font-semibold bg-gray-50">{day}</div>
             <div className="p-3 space-y-2">
               {list.map((s) => {
-                const isFull = s.booked_count >= s.capacity;
-                const state = s.locked ? 'Zamknuté' : isFull ? 'Rezervované' : 'Voľné';
+                const stav = s.booked ? 'Rezervované' : s.locked ? 'Zamknuté' : 'Voľné';
+                const stavClass =
+                  s.booked ? 'text-red-600' : s.locked ? 'text-amber-600' : 'text-emerald-600';
+                const left = Math.max(0, (s.capacity ?? 1) - (s.bookedCount ?? 0));
 
                 return (
                   <div key={s.id} className="flex items-center gap-2">
-                    <div className="w-16">{s.time}</div>
-                    <div className="w-28 text-xs opacity-70">{state}</div>
+                    <div className="w-20">{s.time}</div>
+
+                    <div className={`w-28 text-sm ${stavClass}`}>{stav}</div>
+                    <div className="text-xs opacity-70 w-28">Voľné miesta: {left}</div>
 
                     <input
                       type="number"
                       min={1}
-                      value={s.capacity}
+                      value={s.capacity ?? 1}
                       onChange={(e) => changeCap(s, Number(e.target.value) || 1)}
                       className="border rounded px-2 py-1 w-20"
                     />
