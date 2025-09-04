@@ -8,7 +8,7 @@ type Slot = {
   time: string;
   locked?: boolean;
   capacity?: number;
-  booked_count?: number; // z DB
+  booked_count?: number;
 };
 
 export default function AdminSlotsClient() {
@@ -22,21 +22,24 @@ export default function AdminSlotsClient() {
   const [cap,  setCap ] = useState(1);
 
   async function fetchSlots() {
-    const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
-    const j = await res.json();
-    setSlots(Array.isArray(j?.slots) ? j.slots : []);
+    try {
+      const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) { setSlots([]); return; }
+      // bezpečné parsovanie
+      let j: any = null;
+      try { j = await res.json(); } catch { j = null; }
+      setSlots(Array.isArray(j?.slots) ? j.slots : []);
+    } catch {
+      setSlots([]);
+    }
   }
 
   useEffect(() => {
     let m = true;
-    (async () => {
-      try { await fetchSlots(); }
-      finally { if (m) setLoading(false); }
-    })();
+    (async () => { try { await fetchSlots(); } finally { if (m) setLoading(false); } })();
     return () => { m = false; };
   }, []);
 
-  // debounce refetch
   const refTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function scheduleRefetch(ms = 300) {
     if (refTimer.current) clearTimeout(refTimer.current);
@@ -46,7 +49,6 @@ export default function AdminSlotsClient() {
   }
   function flashSaved() { setSaved(true); setTimeout(()=>setSaved(false), 700); }
 
-  // optimistic helpers
   function upsertLocal(s: Slot) {
     setSlots(curr => {
       const i = curr.findIndex(x => x.id === s.id);
@@ -63,7 +65,6 @@ export default function AdminSlotsClient() {
   }
   function removeLocal(id: string) { setSlots(curr => curr.filter(s => s.id !== id)); }
 
-  // actions
   async function addOne() {
     if (!date || !time) return alert('Zadaj dátum aj čas.');
     const safeCap = Math.max(1, Number.isFinite(+cap) ? +cap : 1);
@@ -130,7 +131,6 @@ export default function AdminSlotsClient() {
   }
 
   async function freeSlot(s: Slot) {
-    // uvoľniť = vymazať rezervácie + odomknúť
     patchLocal(s.id, { booked_count: 0, locked: false });
     try {
       await fetch('/api/slots', {
@@ -146,19 +146,18 @@ export default function AdminSlotsClient() {
   async function clearAll() {
     if (!confirm('Naozaj vymazať všetky sloty aj rezervácie?')) return;
     try {
-      await fetch('/api/slots', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'clearAll' }),
-      });
+      const res = await fetch('/api/slots', { method: 'DELETE' });
+      // aj keby server poslal prázdny body, nech to nepadne:
+      let j: any = null;
+      try { j = await res.json(); } catch { j = null; }
+      if (!res.ok || j?.error) throw new Error(j?.error || `HTTP ${res.status}`);
       await fetchSlots();
       flashSaved();
-    } catch (e:any) {
+    } catch (e: any) {
       alert(e?.message || 'Chyba pri mazaní všetkých');
     }
   }
 
-  // group by day
   const grouped = useMemo(() => {
     const by: Record<string, Slot[]> = {};
     for (const s of slots) (by[s.date] ||= []).push(s);
@@ -217,18 +216,14 @@ export default function AdminSlotsClient() {
                       className="border rounded px-2 py-1 w-20"
                       title="Kapacita"
                     />
-                    <div className="text-xs opacity-60 w-24">
-                      {booked}/{capacity}
-                    </div>
+                    <div className="text-xs opacity-60 w-24">{booked}/{capacity}</div>
 
                     <button onClick={()=>toggleLock(s)} className="rounded border px-2 py-1">
                       {s.locked ? 'Odomknúť' : 'Zamknúť'}
                     </button>
-
                     <button onClick={()=>freeSlot(s)} className="rounded border px-2 py-1">
                       Uvoľniť
                     </button>
-
                     <button onClick={()=>removeOne(s)} className="rounded border px-2 py-1">
                       Vymazať
                     </button>

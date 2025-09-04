@@ -16,7 +16,6 @@ export async function GET(req: Request) {
   const isPublic = url.searchParams.get('public') === '1';
 
   if (isPublic) {
-    // verejná časť – iba voľné sloty (view)
     const { data, error } = await supa
       .from('slots_available')
       .select('id,date,time,locked,capacity,booked_count')
@@ -26,7 +25,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ slots: data ?? [] });
   }
 
-  // admin – všetky sloty
   const { data, error } = await supa
     .from('slots')
     .select('id,date,time,locked,capacity,booked_count')
@@ -82,7 +80,6 @@ export async function PATCH(req: Request) {
 
     if (action === 'delete') {
       if (!id) return NextResponse.json({ error: 'missing id' }, { status: 400 });
-      // najprv zmaž rezervácie (trigger zníži counter), potom slot
       const delRes = await supa.from('reservations').delete().eq('slot_id', id);
       if (delRes.error) return NextResponse.json({ error: delRes.error.message }, { status: 500 });
       const delSlot = await supa.from('slots').delete().eq('id', id);
@@ -91,7 +88,6 @@ export async function PATCH(req: Request) {
     }
 
     if (action === 'free') {
-      // Admin uvoľní slot pre ďalšiu rezerváciu: vyčistíme rezervácie a odomkneme
       if (!id) return NextResponse.json({ error: 'missing id' }, { status: 400 });
       const del = await supa.from('reservations').delete().eq('slot_id', id);
       if (del.error) return NextResponse.json({ error: del.error.message }, { status: 500 });
@@ -100,7 +96,7 @@ export async function PATCH(req: Request) {
     }
 
     if (action === 'clearAll') {
-      // „Vymazať všetky“ – korektný JSON response
+      // ponechávam kvôli spätn. kompatibilite
       const delRes = await supa.from('reservations').delete().neq('slot_id', '');
       if (delRes.error) return NextResponse.json({ error: delRes.error.message }, { status: 500 });
       const delSlots = await supa.from('slots').delete().neq('id', '');
@@ -111,5 +107,22 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'unknown action' }, { status: 400 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'PATCH error' }, { status: 500 });
+  }
+}
+
+/** DELETE /api/slots  ->  vymaže VŠETKY sloty aj rezervácie, vždy vráti JSON */
+export async function DELETE() {
+  try {
+    const supa = getServiceClient();
+
+    const delRes = await supa.from('reservations').delete().neq('slot_id', '');
+    if (delRes.error) return NextResponse.json({ error: delRes.error.message }, { status: 500 });
+
+    const delSlots = await supa.from('slots').delete().neq('id', '');
+    if (delSlots.error) return NextResponse.json({ error: delSlots.error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true, cleared: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? 'DELETE error' }, { status: 500 });
   }
 }
