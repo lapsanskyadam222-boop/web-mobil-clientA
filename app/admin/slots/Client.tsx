@@ -8,7 +8,7 @@ type Slot = {
   time: string;
   locked: boolean;
   capacity: number;
-  bookedCount: number; // dôležité pre “Rezervované”
+  bookedCount: number;
 };
 
 export default function AdminSlotsClient() {
@@ -190,19 +190,32 @@ export default function AdminSlotsClient() {
                 const cap = s.capacity ?? 1;
                 const booked = s.bookedCount ?? 0;
                 const isFull = booked >= cap;
-                const status = s.locked
-                  ? 'Zamknuté'
-                  : isFull
-                  ? `Rezervované (${booked}/${cap})`
-                  : `Voľné (${cap - booked} zostáva)`;
 
                 return (
                   <div key={s.id} className="flex items-center gap-2">
+                    {/* čas */}
                     <div className="w-16">{s.time}</div>
 
                     {/* STAV */}
-                    <div className={`text-xs w-44 ${isFull ? 'text-rose-600' : s.locked ? 'text-amber-600' : 'text-emerald-700'}`}>
-                      {status}
+                    <div className="flex items-center gap-2 w-56">
+                      {isFull ? (
+                        <span className="text-xs font-medium text-rose-600">
+                          Rezervované ({booked}/{cap})
+                        </span>
+                      ) : s.locked ? (
+                        <span className="text-xs font-medium text-amber-600">Zamknuté</span>
+                      ) : (
+                        <span className="text-xs font-medium text-emerald-700">
+                          Voľné ({Math.max(0, cap - booked)} zostáva)
+                        </span>
+                      )}
+
+                      {/* ak je zároveň plný aj zamknutý, ukáž aj pilulku Zamknuté */}
+                      {isFull && s.locked && (
+                        <span className="text-[10px] rounded-full bg-gray-200 px-2 py-0.5 text-gray-700">
+                          Zamknuté
+                        </span>
+                      )}
                     </div>
 
                     {/* Kapacita */}
