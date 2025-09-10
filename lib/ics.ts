@@ -1,68 +1,64 @@
-// /lib/ics.ts
+// lib/ics.ts
+type IcsOpts = {
+  title: string;
+  date: string;      // "YYYY-MM-DD"
+  time: string;      // "HH:MM"
+  durationMinutes: number; // napr. 60
+  timezone?: string; // default "Europe/Bratislava"
+  location?: string;
+  description?: string;
+};
+
 function pad(n: number) {
   return String(n).padStart(2, '0');
 }
 
-function escapeText(s: string) {
-  return (s || '')
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\r?\n/g, '\\n');
+// pripočíta minúty k "YYYY-MM-DD" + "HH:MM" a vráti nový [date, time]
+function addMinutes(date: string, time: string, minutes: number): [string, string] {
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm]  = time.split(':').map(Number);
+
+  // spravíme to „bez timezonu“ a iba aritmeticky
+  const start = new Date(Date.UTC(y, m - 1, d, hh, mm, 0));
+  const end   = new Date(start.getTime() + minutes * 60_000);
+
+  const ey = end.getUTCFullYear();
+  const em = pad(end.getUTCMonth() + 1);
+  const ed = pad(end.getUTCDate());
+  const eh = pad(end.getUTCHours());
+  const eM = pad(end.getUTCMinutes());
+  return [`${ey}-${em}-${ed}`, `${eh}:${eM}`];
 }
 
-// Vytvorí reťazec YYYYMMDDTHHmmss (bez Z a bez TZID) – "floating time"
-function fmtFloating(y: number, m: number, d: number, hh: number, mm: number, ss = 0) {
-  return `${y}${pad(m)}${pad(d)}T${pad(hh)}${pad(mm)}${pad(ss)}`;
+// z "YYYY-MM-DD" + "HH:MM" → "YYYYMMDDTHHMMSS"
+function toIcsStamp(date: string, time: string) {
+  const [y, m, d] = date.split('-');
+  const [hh, mm]  = time.split(':');
+  return `${y}${m}${d}T${hh}${mm}00`;
 }
 
-export function buildICS(opts: {
-  title: string;
-  description?: string;
-  location?: string;
-  startLocalParts: { year: number; month: number; day: number; hour: number; minute: number };
-  durationMinutes: number;
-}) {
-  const { title, description = '', location = '', startLocalParts, durationMinutes } = opts;
+export function buildICS(opts: IcsOpts) {
+  const tz   = opts.timezone ?? 'Europe/Bratislava';
+  const dtStart = toIcsStamp(opts.date, opts.time);
+  const [endDate, endTime] = addMinutes(opts.date, opts.time, opts.durationMinutes);
+  const dtEnd   = toIcsStamp(endDate, endTime);
 
-  const { year, month, day, hour, minute } = startLocalParts;
-
-  // koniec = začiatok + duration
-  const startDate = new Date(year, month - 1, day, hour, minute, 0);
-  const endDate = new Date(startDate.getTime() + durationMinutes * 60_000);
-
-  const dtStart = fmtFloating(year, month, day, hour, minute, 0);
-  const dtEnd = fmtFloating(
-    endDate.getFullYear(),
-    endDate.getMonth() + 1,
-    endDate.getDate(),
-    endDate.getHours(),
-    endDate.getMinutes(),
-    0
-  );
-
-  // DTSTAMP v UTC podľa špecifikácie
-  const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-
-  const uid = `${dtstamp}-${Math.random().toString(36).slice(2)}@rezervacny-system`;
+  const escape = (s = '') => s.replace(/\r?\n/g, '\\n');
 
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Rezervacny System//Booking//SK',
     'CALSCALE:GREGORIAN',
+    'PRODID:-//Lezenie s Nicol//Booking//SK',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
-    `UID:${uid}`,
-    `DTSTAMP:${dtstamp}`,
-    // floating local time
-    `DTSTART:${dtStart}`,
-    `DTEND:${dtEnd}`,
-    `SUMMARY:${escapeText(title)}`,
-    `DESCRIPTION:${escapeText(description)}`,
-    `LOCATION:${escapeText(location)}`,
+    `SUMMARY:${escape(opts.title)}`,
+    `DTSTART;TZID=${tz}:${dtStart}`,
+    `DTEND;TZID=${tz}:${dtEnd}`,
+    opts.location ? `LOCATION:${escape(opts.location)}` : '',
+    opts.description ? `DESCRIPTION:${escape(opts.description)}` : '',
     'END:VEVENT',
     'END:VCALENDAR',
     ''
-  ].join('\r\n');
+  ].filter(Boolean).join('\r\n');
 }

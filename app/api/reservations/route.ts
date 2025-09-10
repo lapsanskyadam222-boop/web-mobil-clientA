@@ -1,7 +1,8 @@
+// app/api/reservations/route.ts
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
 import { buildICS } from '@/lib/ics';
-import { sendReservationEmail } from '@/lib/sendEmail';
+import { sendReservationEmail } from '@/lib/sendEmail'; // alebo pôvodná cesta
 
 export async function POST(req: Request) {
   try {
@@ -18,8 +19,6 @@ export async function POST(req: Request) {
     }
 
     const supa = getServiceClient();
-
-    // 1) atómová rezervácia v DB
     const { data, error } = await supa.rpc('book_slot', {
       p_slot_id: slotId,
       p_name: name.trim(),
@@ -35,25 +34,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Rezervácia zlyhala.' }, { status: 500 });
     }
 
-    // 2) výsledok z funkcie (môže byť array)
+    // funkcia vracia riadok s názvami v_date, v_time:
     const resv = Array.isArray(data) ? data[0] : data;
 
-    // Dátum/čas z DB sú podľa verzie: date/time alebo v_date/v_time
-    const dateStr = String(resv?.date ?? resv?.v_date ?? '');
-    const timeStr = String(resv?.time ?? resv?.v_time ?? '');
+    const dateStr = String(resv.v_date); // "YYYY-MM-DD"
+    const timeStr = String(resv.v_time); // "HH:MM"
 
-    // Bez dátumu/času nebudeme pokračovať
-    if (!dateStr || !timeStr) {
-      console.error('Missing date/time in reservation payload:', resv);
-      return NextResponse.json({ error: 'Chýba dátum alebo čas rezervácie.' }, { status: 500 });
-    }
-
-    // 3) .ics – “floating” local time (bez Z/TZID), aby sa zobrazil presne
-    //    ako ho zákazník vybral (bez posunu časových zón).
-    const [Y, M, D] = dateStr.split('-').map((v: string) => parseInt(v, 10));
-    const [h, m] = timeStr.split(':').map((v: string) => parseInt(v, 10));
+    // vytvoríme ICS na presný lokálny čas bez problémov s timezone
     const ics = buildICS({
       title: `Rezervácia: ${name} (${phone})`,
+      date: dateStr,
+      time: timeStr,
+      durationMinutes: 60,
+      timezone: 'Europe/Bratislava',
       location: 'Lezenie s Nicol',
       description:
         `Rezervácia cez web.\n` +
@@ -61,43 +54,24 @@ export async function POST(req: Request) {
         `E-mail: ${email}\n` +
         `Telefón: ${phone}\n` +
         `Termín: ${dateStr} ${timeStr}`,
-      startLocalParts: { year: Y, month: M, day: D, hour: h, minute: m },
-      durationMinutes: 60, // môžeš upraviť
     });
 
-    // 4) e-mail pre admina – predmet má reálny dátum a čas
-    const subject = `Nová rezervácia ${dateStr} ${timeStr} — ${name}`;
-    const html = `
-      <p><strong>Nová rezervácia</strong></p>
-      <ul>
-        <li><b>Termín:</b> ${dateStr} ${timeStr}</li>
-        <li><b>Meno:</b> ${name}</li>
-        <li><b>E-mail:</b> ${email}</li>
-        <li><b>Telefón:</b> ${phone}</li>
-      </ul>`.trim();
-
+    // predmet a telo nech používajú správny dátum/čas
     await sendReservationEmail?.(
-      subject,
-      html,
+      `Nová rezervácia ${dateStr} ${timeStr} — ${name}`,
+      `<p><strong>Nová rezervácia</strong></p>
+       <ul>
+         <li><b>Termín:</b> ${dateStr} ${timeStr}</li>
+         <li><b>Meno:</b> ${name}</li>
+         <li><b>E-mail:</b> ${email}</li>
+         <li><b>Telefón:</b> ${phone}</li>
+       </ul>`,
       { filename: 'rezervacia.ics', content: ics }
     );
 
-    return NextResponse.json({
-      ok: true,
-      reservation: {
-        id: resv.id,
-        slot_id: resv.slot_id,
-        date: dateStr,
-        time: timeStr,
-        name,
-        email,
-        phone,
-        created_at: resv.created_at,
-      }
-    }, { status: 201 });
-
+    return NextResponse.json({ ok: true, reservation: { ...resv, date: dateStr, time: timeStr } }, { status: 201 });
   } catch (e: any) {
-    console.error('Reservations POST error:', e);
+    console.error(e);
     return NextResponse.json({ error: e?.message ?? 'Neznáma chyba' }, { status: 500 });
   }
 }
