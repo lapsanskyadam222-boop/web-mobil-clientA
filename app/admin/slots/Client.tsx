@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 type Slot = {
   id: string;
-  date: string;  // YYYY-MM-DD
-  time: string;  // HH:MM
+  date: string;   // YYYY-MM-DD
+  time: string;   // HH:MM
   locked?: boolean;
   booked_count?: number;
   capacity?: number;
@@ -21,7 +21,7 @@ function fmtDateLabel(d: Date) {
   return d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-/** Kalendár: iba tie týždne, ktoré majú aspoň 1 deň z daného mesiaca */
+/** Kalendár: iba týždne, ktoré obsahujú aspoň 1 deň z daného mesiaca */
 function buildMonthWeeks(monthAnchor: Date): Date[][] {
   const first = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
   const startOffset = (first.getDay() + 6) % 7; // Po=0..Ne=6
@@ -30,15 +30,15 @@ function buildMonthWeeks(monthAnchor: Date): Date[][] {
 
   const inMonth = (d: Date) => d.getMonth() === monthAnchor.getMonth();
   const weeks: Date[][] = [];
-  let cursor = new Date(start);
+  let cur = new Date(start);
 
   while (true) {
     const week: Date[] = [];
     for (let i = 0; i < 7; i++) {
-      week.push(new Date(cursor));
-      cursor.setDate(cursor.getDate() + 1);
+      week.push(new Date(cur));
+      cur.setDate(cur.getDate() + 1);
     }
-    if (!week.some(inMonth)) break; // ďalší týždeň už nemá dni z mesiaca
+    if (!week.some(inMonth)) break;
     weeks.push(week);
   }
   return weeks;
@@ -79,8 +79,7 @@ export default function AdminSlotsClient() {
     }
   }
   useEffect(() => { loadSlots(); }, []);
-
-  function flashSaved(){ setSaved(true); setTimeout(()=>setSaved(false), 900); }
+  const flashSaved = () => { setSaved(true); setTimeout(()=>setSaved(false), 900); };
 
   function sortByDateTime(a: Slot, b: Slot) {
     const da = `${a.date}T${a.time}`, db = `${b.date}T${b.time}`;
@@ -239,7 +238,7 @@ export default function AdminSlotsClient() {
               min={1}
               value={cap}
               onChange={e=>setCap(Math.max(1, +e.target.value||1))}
-              className="border rounded px-2 py-2 w-14 sm:w-24"   // ❶ užšie na mobile
+              className="border rounded px-2 py-2 w-14 sm:w-20"  // užší input
               disabled={busy}
             />
           </label>
@@ -266,18 +265,18 @@ export default function AdminSlotsClient() {
         )}
 
         <div className="rounded-lg border overflow-hidden">
-          <table className="w-full table-fixed text-sm">
-            {/* ❷ zúžené percentá – Kapacita má minimum, aby sa vošlo slovo + úzky input */}
+          <table className="w-full table-fixed text-xs sm:text-sm">
+            {/* užšie percentá – Kapacita dostala len ~18 % na mobile */}
             <colgroup>
-              <col className="w-[26%] sm:w-[22%]" />     {/* Čas */}
-              <col className="w-[24%] sm:w-[20%]" />     {/* Kapacita – užšie */}
-              <col className="w-[18%]" />                 {/* Stav */}
-              <col className="w-[32%] sm:w-[38%]" />     {/* Akcie – viac miesta */}
+              <col className="w-[28%] sm:w-[22%]" />   {/* Čas */}
+              <col className="w-[18%] sm:w-[18%]" />   {/* Kapacita – veľmi úzka */}
+              <col className="w-[16%] sm:w-[18%]" />   {/* Stav */}
+              <col className="w-[38%] sm:w-[42%]" />   {/* Akcie */}
             </colgroup>
             <thead>
               <tr className="bg-gray-100">
                 <th className="border px-2 py-1 text-left">Čas</th>
-                <th className="border px-2 py-1 text-left">Kapacita</th>
+                <th className="border px-1 py-1 text-left whitespace-nowrap">Kapacita</th>
                 <th className="border px-2 py-1 text-left">Stav</th>
                 <th className="border px-2 py-1 text-right">Akcie</th>
               </tr>
@@ -291,13 +290,13 @@ export default function AdminSlotsClient() {
                 <tr key={s.id}>
                   <td className="border px-2 py-1">{s.time}</td>
                   <td className="border px-2 py-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <input
                         type="number"
                         min={1}
                         value={s.capacity ?? 1}
                         onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-2 py-1 w-12 sm:w-20"   // ❸ ešte užší input v riadkoch
+                        className="border rounded px-2 py-1 w-10 sm:w-16"  // ešte užšie v riadkoch
                         disabled={busy}
                       />
                       <span className="hidden sm:inline text-xs opacity-60 whitespace-nowrap">
