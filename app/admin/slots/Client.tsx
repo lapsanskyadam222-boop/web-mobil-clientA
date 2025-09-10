@@ -20,18 +20,31 @@ function toYMD(d: Date) {
 function fmtDateLabel(d: Date) {
   return d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
 }
-function buildMonthMatrix(monthAnchor: Date) {
+
+/** Vráti pole týždňov (každý týždeň = 7 dní), a zahrnie iba tie týždne,
+ * ktoré obsahujú aspoň 1 deň z daného mesiaca. */
+function buildMonthWeeks(monthAnchor: Date): Date[][] {
   const first = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
   const startOffset = (first.getDay() + 6) % 7; // Po=0..Ne=6
   const start = new Date(first);
   start.setDate(first.getDate() - startOffset);
-  const days: Date[] = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    days.push(d);
+
+  const isInMonth = (d: Date) => d.getMonth() === monthAnchor.getMonth();
+
+  const weeks: Date[][] = [];
+  let cursor = new Date(start);
+
+  while (true) {
+    const week: Date[] = [];
+    for (let i = 0; i < 7; i++) {
+      week.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    const hasThisMonth = week.some(isInMonth);
+    if (!hasThisMonth) break;           // ďalší týždeň už nemá dni z mesiaca → končíme
+    weeks.push(week);
   }
-  return days;
+  return weeks;
 }
 
 export default function AdminSlotsClient() {
@@ -52,7 +65,7 @@ export default function AdminSlotsClient() {
     () => calMonth.toLocaleDateString('sk-SK', { month: 'long', year: 'numeric' }),
     [calMonth]
   );
-  const days = useMemo(() => buildMonthMatrix(calMonth), [calMonth]);
+  const weeks = useMemo(() => buildMonthWeeks(calMonth), [calMonth]);
 
   async function loadSlots() {
     setLoading(true);
@@ -154,7 +167,7 @@ export default function AdminSlotsClient() {
         {saved && <span className="text-sm text-green-600">Uložené ✓</span>}
       </div>
 
-      {/* KALENDÁR – 7 stĺpcov × 6 týždňov, tvrdé inline CSS grid */}
+      {/* KALENDÁR – iba týždne, ktoré majú aspoň 1 deň z daného mesiaca */}
       <section className="rounded-2xl border p-4">
         <div className="mb-3 flex items-center justify-between">
           <button
@@ -170,7 +183,7 @@ export default function AdminSlotsClient() {
           >›</button>
         </div>
 
-        {/* hlavička dní (grid inline, keby náhodou Tailwind grid neplatil) */}
+        {/* hlavička dní */}
         <div
           style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}
           className="text-center text-xs opacity-70"
@@ -178,41 +191,43 @@ export default function AdminSlotsClient() {
           <div>po</div><div>ut</div><div>st</div><div>št</div><div>pia</div><div>so</div><div>ne</div>
         </div>
 
-        <div
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}
-        >
-          {days.map((d, i) => {
-            const id = toYMD(d);
-            const inMonth = d.getMonth() === calMonth.getMonth();
-            const isSelected = id === selectedDate;
-            const isToday = id === toYMD(new Date());
-            const hasAny = daysWithSlots.has(id);
-
-            return (
-              <button
-                key={i}
-                onClick={()=>setSelectedDate(id)}
-                title={fmtDateLabel(d)}
-                style={{ minHeight: 40 }}
-                className={[
-                  'rounded border text-sm w-full',
-                  inMonth ? 'bg-white' : 'bg-gray-50 opacity-60',
-                  isSelected ? 'bg-black text-white border-black' : '',
-                  isToday && !isSelected ? 'ring-1 ring-black/50' : '',
-                ].join(' ')}
-              >
-                <span className="inline-flex items-center justify-center gap-1">
-                  {d.getDate()}
-                  {hasAny && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-                </span>
-              </button>
-            );
-          })}
+        {/* riadky = týždne */}
+        <div className="space-y-2">
+          {weeks.map((week, wi) => (
+            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}>
+              {week.map((d, di) => {
+                const id = toYMD(d);
+                const inMonth = d.getMonth() === calMonth.getMonth();
+                const isSelected = id === selectedDate;
+                const isToday = id === toYMD(new Date());
+                const hasAny = daysWithSlots.has(id);
+                return (
+                  <button
+                    key={di}
+                    onClick={()=>setSelectedDate(id)}
+                    title={fmtDateLabel(d)}
+                    style={{ minHeight: 40 }}
+                    className={[
+                      'rounded border text-sm w-full',
+                      inMonth ? 'bg-white' : 'bg-gray-50 opacity-60',
+                      isSelected ? 'bg-black text-white border-black' : '',
+                      isToday && !isSelected ? 'ring-1 ring-black/50' : '',
+                    ].join(' ')}
+                  >
+                    <span className="inline-flex items-center justify-center gap-1">
+                      {d.getDate()}
+                      {hasAny && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* PANEL PRE VYBRANÝ DEŇ */}
-      <section className="rounded-2xl border p-4 space-y-3">
+      {/* PANEL PRE VYBRANÝ DEŇ (bez vonkajšej šedej linky) */}
+      <section className="rounded-2xl p-4 space-y-3">
         <div className="text-sm opacity-70">Vybraný deň:</div>
         <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
 
@@ -242,12 +257,12 @@ export default function AdminSlotsClient() {
         )}
 
         <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border px-2 py-1 w-[20%] text-left">Čas</th>
-                <th className="border px-2 py-1 w-[20%] text-left">Kapacita</th>
-                <th className="border px-2 py-1 w-[20%] text-left">Stav</th>
+                <th className="border px-2 py-1 w-[22%] text-left">Kapacita</th>
+                <th className="border px-2 py-1 w-[18%] text-left">Stav</th>
                 <th className="border px-2 py-1 w-[40%] text-right">Akcie</th>
               </tr>
             </thead>
@@ -269,19 +284,21 @@ export default function AdminSlotsClient() {
                         className="border rounded px-2 py-1 w-20"
                         disabled={busy}
                       />
-                      <span className="text-xs opacity-60">
+                      <span className="text-xs opacity-60 whitespace-nowrap">
                         ({s.booked_count ?? 0} / {s.capacity ?? 1})
                       </span>
                     </div>
                   </td>
                   <td className="border px-2 py-1">
-                    <span className={`inline-block rounded px-2 py-0.5 text-xs mr-1 ${(s.booked_count??0) > 0 ? 'bg-gray-900 text-white' : 'bg-gray-200'}`}>
-                      {(s.booked_count??0) > 0 ? 'Rezervované' : 'Voľné'}
-                    </span>
-                    {s.locked && <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">Zamknuté</span>}
+                    <div className="flex items-center gap-1">
+                      <span className={`inline-block rounded px-2 py-0.5 text-xs ${ (s.booked_count??0) > 0 ? 'bg-gray-900 text-white' : 'bg-gray-200'}`}>
+                        {(s.booked_count??0) > 0 ? 'Rezervované' : 'Voľné'}
+                      </span>
+                      {s.locked && <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">Zamknuté</span>}
+                    </div>
                   </td>
                   <td className="border px-2 py-1">
-                    <div className="flex justify-end gap-1">
+                    <div className="flex justify-end gap-1 whitespace-nowrap">
                       {!s.locked ? (
                         <button onClick={()=>lock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100">Zamknúť</button>
                       ) : (
