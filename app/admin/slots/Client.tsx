@@ -21,8 +21,7 @@ function fmtDateLabel(d: Date) {
   return d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-/** Vráti pole týždňov (každý týždeň = 7 dní), a zahrnie iba tie týždne,
- * ktoré obsahujú aspoň 1 deň z daného mesiaca. */
+/** Riadky = týždne, zahrnieme iba týždne, ktoré obsahujú aspoň 1 deň z aktuálneho mesiaca. */
 function buildMonthWeeks(monthAnchor: Date): Date[][] {
   const first = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
   const startOffset = (first.getDay() + 6) % 7; // Po=0..Ne=6
@@ -41,7 +40,7 @@ function buildMonthWeeks(monthAnchor: Date): Date[][] {
       cursor.setDate(cursor.getDate() + 1);
     }
     const hasThisMonth = week.some(isInMonth);
-    if (!hasThisMonth) break;           // ďalší týždeň už nemá dni z mesiaca → končíme
+    if (!hasThisMonth) break;
     weeks.push(week);
   }
   return weeks;
@@ -161,14 +160,14 @@ export default function AdminSlotsClient() {
   if (loading) return <main className="p-6">Načítavam…</main>;
 
   return (
-    <main className="mx-auto max-w-3xl p-6 space-y-6">
+    <main className="mx-auto max-w-screen-lg p-4 sm:p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Správa slotov</h1>
         {saved && <span className="text-sm text-green-600">Uložené ✓</span>}
       </div>
 
       {/* KALENDÁR – iba týždne, ktoré majú aspoň 1 deň z daného mesiaca */}
-      <section className="rounded-2xl border p-4">
+      <section className="mx-auto w-full max-w-md sm:max-w-lg">
         <div className="mb-3 flex items-center justify-between">
           <button
             className="rounded border px-3 py-1"
@@ -226,44 +225,74 @@ export default function AdminSlotsClient() {
         </div>
       </section>
 
-      {/* PANEL PRE VYBRANÝ DEŇ (bez vonkajšej šedej linky) */}
-      <section className="rounded-2xl p-4 space-y-3">
-        <div className="text-sm opacity-70">Vybraný deň:</div>
-        <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
-
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="block">
-            <span className="block text-xs mb-1">Čas</span>
-            <input type="time" value={time} onChange={e=>setTime(e.target.value)} className="border rounded px-3 py-2" disabled={busy}/>
-          </label>
-          <label className="block">
-            <span className="block text-xs mb-1">Kapacita</span>
-            <input type="number" min={1} value={cap} onChange={e=>setCap(Math.max(1, +e.target.value||1))} className="border rounded px-3 py-2 w-24" disabled={busy}/>
-          </label>
-          <button onClick={addOne} className="rounded bg-black text-white px-4 py-2 disabled:opacity-50" disabled={busy || !time}>Pridať 1</button>
-          <button onClick={addTimeToBatch} className="rounded border px-3 py-2 disabled:opacity-50" disabled={busy || !time}>Pridať do zoznamu</button>
-          <button onClick={submitBatch} className="rounded bg-black text-white px-4 py-2 disabled:opacity-50" disabled={busy || batchTimes.length===0}>Pridať všetky ({batchTimes.length})</button>
+      {/* PANEL PRE VYBRANÝ DEŇ – bez vonkajšej šedej linky */}
+      <section className="rounded-2xl p-0 sm:p-0 space-y-3">
+        <div className="px-4 sm:px-0">
+          <div className="text-sm opacity-70">Vybraný deň:</div>
+          <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
         </div>
 
-        {batchTimes.length>0 && (
-          <div className="flex flex-wrap gap-2">
-            {batchTimes.map(t=>(
-              <span key={t} className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
-                {t}
-                <button onClick={()=>removeTimeFromBatch(t)} className="text-gray-500 hover:text-black">×</button>
-              </span>
-            ))}
-          </div>
-        )}
+        {/* Ovládací panel – responsívny, zalamuje sa na mobiloch */}
+        <div className="mt-2 rounded-2xl border p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4 min-w-0">
+            <div className="flex gap-3 min-w-0">
+              <label className="block min-w-0">
+                <span className="block text-xs mb-1">Čas</span>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={e=>setTime(e.target.value)}
+                  className="border rounded px-3 py-2 w-full min-w-0"
+                  disabled={busy}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs mb-1">Kapacita</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={cap}
+                  onChange={e=>setCap(Math.max(1, +e.target.value||1))}
+                  className="border rounded px-3 py-2 w-20 sm:w-24"
+                  disabled={busy}
+                />
+              </label>
+            </div>
 
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full table-fixed text-sm">
+            <div className="flex flex-wrap gap-2 justify-end sm:ml-auto">
+              <button onClick={addOne} className="rounded bg-black text-white px-4 py-2 disabled:opacity-50" disabled={busy || !time}>
+                Pridať 1
+              </button>
+              <button onClick={addTimeToBatch} className="rounded border px-3 py-2 disabled:opacity-50" disabled={busy || !time}>
+                Pridať do zoznamu
+              </button>
+              <button onClick={submitBatch} className="rounded bg-black text-white px-4 py-2 disabled:opacity-50" disabled={busy || batchTimes.length===0}>
+                Pridať všetky ({batchTimes.length})
+              </button>
+            </div>
+          </div>
+
+          {batchTimes.length>0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {batchTimes.map(t=>(
+                <span key={t} className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
+                  {t}
+                  <button onClick={()=>removeTimeFromBatch(t)} className="text-gray-500 hover:text-black">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* TABUĽKA – v scroll wrappe, nikdy neroztiahne stránku */}
+        <div className="mt-4 -mx-4 sm:mx-0 overflow-x-auto">
+          <table className="min-w-[640px] w-full text-sm">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border px-2 py-1 w-[20%] text-left">Čas</th>
-                <th className="border px-2 py-1 w-[22%] text-left">Kapacita</th>
-                <th className="border px-2 py-1 w-[18%] text-left">Stav</th>
-                <th className="border px-2 py-1 w-[40%] text-right">Akcie</th>
+                <th className="border px-2 py-1 text-left w-24">Čas</th>
+                <th className="border px-2 py-1 text-left w-64">Kapacita</th>
+                <th className="border px-2 py-1 text-left w-40">Stav</th>
+                <th className="border px-2 py-1 text-right">Akcie</th>
               </tr>
             </thead>
             <tbody>
@@ -281,7 +310,7 @@ export default function AdminSlotsClient() {
                         min={1}
                         value={s.capacity ?? 1}
                         onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-2 py-1 w-20"
+                        className="border rounded px-2 py-1 w-20 sm:w-24"
                         disabled={busy}
                       />
                       <span className="text-xs opacity-60 whitespace-nowrap">
@@ -298,7 +327,7 @@ export default function AdminSlotsClient() {
                     </div>
                   </td>
                   <td className="border px-2 py-1">
-                    <div className="flex justify-end gap-1 whitespace-nowrap">
+                    <div className="flex flex-wrap justify-end gap-2 whitespace-nowrap">
                       {!s.locked ? (
                         <button onClick={()=>lock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100">Zamknúť</button>
                       ) : (
