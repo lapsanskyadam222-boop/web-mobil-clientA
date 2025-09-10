@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Slot = {
   id: string;
@@ -21,7 +21,7 @@ export default function AdminSlotsClient() {
   const [time, setTime] = useState("");
   const [cap, setCap] = useState(1);
 
-  // --- fetch (no-store + cache-buster)
+  // --- fetch
   async function fetchSlots() {
     const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: "no-store" });
     const j = await res.json();
@@ -60,17 +60,6 @@ export default function AdminSlotsClient() {
   }
 
   // --- optimistic helpers
-  function upsertLocal(s: Slot) {
-    setSlots((curr) => {
-      const i = curr.findIndex((x) => x.id === s.id);
-      if (i >= 0) {
-        const next = curr.slice();
-        next[i] = { ...curr[i], ...s };
-        return next;
-      }
-      return curr.concat(s);
-    });
-  }
   function patchLocal(id: string, p: Partial<Slot>) {
     setSlots((curr) => {
       const i = curr.findIndex((x) => x.id === id);
@@ -85,38 +74,6 @@ export default function AdminSlotsClient() {
   }
 
   // --- actions
-  async function addOne() {
-    if (!date || !time) return alert("Zadaj dátum aj čas.");
-    const safeCap = Math.max(1, Number.isFinite(+cap) ? +cap : 1);
-
-    const temp: Slot = {
-      id: `${date}_${time.replace(":", "")}`,
-      date,
-      time,
-      locked: false,
-      booked: false,
-      capacity: safeCap,
-    };
-    upsertLocal(temp);
-    setBusy(true);
-    try {
-      const res = await fetch("/api/slots", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, time, capacity: safeCap }),
-      });
-      if (!res.ok) throw new Error((await res.json())?.error || "POST failed");
-      scheduleRefetch();
-      setTime("");
-      flashSaved();
-    } catch (e: any) {
-      alert(e?.message || "Chyba pri pridávaní");
-      scheduleRefetch(0);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function toggleLock(s: Slot) {
     patchLocal(s.id, { locked: !s.locked });
     try {
@@ -188,50 +145,10 @@ export default function AdminSlotsClient() {
   if (loading) return <main className="p-6">Načítavam…</main>;
 
   return (
-    <main className="mx-auto max-w-2xl p-6 space-y-4">
+    <main className="mx-auto max-w-3xl p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Správa slotov</h1>
         {saved && <span className="text-green-600 text-sm">Uložené ✓</span>}
-      </div>
-
-      <div className="flex gap-2 items-end flex-wrap">
-        <label className="block">
-          <span className="block text-xs mb-1">Dátum</span>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="border rounded px-3 py-2"
-          />
-        </label>
-        <label className="block">
-          <span className="block text-xs mb-1">Čas</span>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="border rounded px-3 py-2"
-          />
-        </label>
-        <label className="block">
-          <span className="block text-xs mb-1">Kapacita</span>
-          <input
-            type="number"
-            min={1}
-            value={cap}
-            onChange={(e) =>
-              setCap(Math.max(1, Number(e.target.value) || 1))
-            }
-            className="border rounded px-3 py-2 w-24"
-          />
-        </label>
-        <button
-          onClick={addOne}
-          disabled={busy}
-          className="rounded bg-black text-white px-4 py-2 disabled:opacity-50"
-        >
-          Pridať 1
-        </button>
       </div>
 
       <div className="space-y-4">
@@ -242,21 +159,24 @@ export default function AdminSlotsClient() {
             </div>
             <div className="p-3 space-y-2">
               {list.map((s) => (
-                <div key={s.id} className="flex items-center gap-2">
-                  <div className="w-16">{s.time}</div>
-                  <input
-                    type="number"
-                    min={1}
-                    value={s.capacity ?? 1}
-                    onChange={(e) =>
-                      changeCap(s, Number(e.target.value) || 1)
-                    }
-                    className="border rounded px-2 py-1 w-20"
-                  />
-                  <div className="text-xs opacity-70 w-24">
-                    {s.locked ? "Zamknuté" : "Voľné"}
+                <div key={s.id} className="flex items-center">
+                  {/* Ľavá časť */}
+                  <div className="flex-1 flex items-center gap-4">
+                    <div className="w-16">{s.time}</div>
+                    <input
+                      type="number"
+                      min={1}
+                      value={s.capacity ?? 1}
+                      onChange={(e) => changeCap(s, Number(e.target.value) || 1)}
+                      className="border rounded px-2 py-1 w-20"
+                    />
+                    <div className="text-xs opacity-70 w-24">
+                      {s.locked ? "Zamknuté" : "Voľné"}
+                    </div>
                   </div>
-                  <div className="flex gap-2">
+
+                  {/* Pravá časť - tlačidlá zarovnané doprava */}
+                  <div className="flex gap-2 justify-end w-72">
                     <button
                       onClick={() => toggleLock(s)}
                       className="px-2 py-1 border rounded hover:bg-gray-100 disabled:opacity-50"
@@ -281,9 +201,6 @@ export default function AdminSlotsClient() {
             </div>
           </div>
         ))}
-        {!grouped.length && (
-          <p className="text-sm opacity-70">Zatiaľ žiadne sloty.</p>
-        )}
       </div>
     </main>
   );
