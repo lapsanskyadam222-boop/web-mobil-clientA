@@ -90,10 +90,14 @@ export async function PATCH(req: Request) {
     }
 
     if (action === 'free') {
-      // zavoláme funkciu v DB, ktorá zmaže rezervácie a resetuje počítadlo
-      const { error } = await supa.rpc('admin_free_slot', { p_slot_id: id });
+      // použijeme DB funkciu admin_free_slot -> tá vymaže rezervácie a resetne slot
+      const { data, error } = await supa.rpc('admin_free_slot', { p_slot_id: id });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ ok: true });
+
+      return NextResponse.json({
+        ok: true,
+        slot: Array.isArray(data) ? data[0] : data, // vrátime nový stav slotu
+      });
     }
 
     return NextResponse.json({ error: 'Neznáma akcia.' }, { status: 400 });
