@@ -222,7 +222,7 @@ export default function AdminSlotsClient() {
         </div>
       </section>
 
-      {/* PANEL PRE VYBRANÝ DEŇ (bez vonkajšej linky) */}
+      {/* PANEL PRE VYBRANÝ DEŇ */}
       <section className="rounded-2xl p-3 sm:p-4 space-y-3">
         <div className="text-sm opacity-70">Vybraný deň:</div>
         <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
@@ -234,7 +234,14 @@ export default function AdminSlotsClient() {
           </label>
           <label className="block">
             <span className="block text-xs mb-1">Kapacita</span>
-            <input type="number" min={1} value={cap} onChange={e=>setCap(Math.max(1, +e.target.value||1))} className="border rounded px-3 py-2 w-24" disabled={busy}/>
+            <input
+              type="number"
+              min={1}
+              value={cap}
+              onChange={e=>setCap(Math.max(1, +e.target.value||1))}
+              className="border rounded px-2 py-2 w-14 sm:w-24"   // ❶ užšie na mobile
+              disabled={busy}
+            />
           </label>
           <button onClick={addOne} className="rounded bg-black text-white px-3 sm:px-4 py-2 text-xs sm:text-sm disabled:opacity-50" disabled={busy || !time}>
             Pridať 1
@@ -260,11 +267,12 @@ export default function AdminSlotsClient() {
 
         <div className="rounded-lg border overflow-hidden">
           <table className="w-full table-fixed text-sm">
+            {/* ❷ zúžené percentá – Kapacita má minimum, aby sa vošlo slovo + úzky input */}
             <colgroup>
-              <col className="w-[25%] sm:w-[20%]" />
-              <col className="w-[35%] sm:w-[28%]" />
-              <col className="w-[18%]" />
-              <col className="w-[22%] sm:w-[34%]" />
+              <col className="w-[26%] sm:w-[22%]" />     {/* Čas */}
+              <col className="w-[24%] sm:w-[20%]" />     {/* Kapacita – užšie */}
+              <col className="w-[18%]" />                 {/* Stav */}
+              <col className="w-[32%] sm:w-[38%]" />     {/* Akcie – viac miesta */}
             </colgroup>
             <thead>
               <tr className="bg-gray-100">
@@ -289,10 +297,10 @@ export default function AdminSlotsClient() {
                         min={1}
                         value={s.capacity ?? 1}
                         onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-2 py-1 w-20"
+                        className="border rounded px-2 py-1 w-12 sm:w-20"   // ❸ ešte užší input v riadkoch
                         disabled={busy}
                       />
-                      <span className="text-xs opacity-60">
+                      <span className="hidden sm:inline text-xs opacity-60 whitespace-nowrap">
                         ({s.booked_count ?? 0} / {s.capacity ?? 1})
                       </span>
                     </div>
@@ -306,7 +314,6 @@ export default function AdminSlotsClient() {
                     </div>
                   </td>
                   <td className="border px-2 py-1">
-                    {/* NA MOBILE SA TLAČIDLÁ ZALAMUJÚ, NA ≥sm OSTANÚ V RIADKU */}
                     <div className="flex flex-wrap sm:flex-nowrap justify-end gap-1 sm:gap-2">
                       {!s.locked ? (
                         <button onClick={()=>lock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100 text-xs sm:text-sm">
