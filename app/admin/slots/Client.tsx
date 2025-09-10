@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState, Fragment } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-// --- typy
 type Slot = {
   id: string;
   date: string;  // YYYY-MM-DD
@@ -12,7 +11,6 @@ type Slot = {
   capacity?: number;
 };
 
-// pomocné
 function toYMD(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -37,22 +35,18 @@ function buildMonthMatrix(monthAnchor: Date) {
 }
 
 export default function AdminSlotsClient() {
-  // dáta
   const [slots, setSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // výber dňa
   const [selectedDate, setSelectedDate] = useState<string>(toYMD(new Date()));
 
-  // formulár pridania
   const [time, setTime] = useState('');
   const [cap, setCap] = useState(1);
   const [batchTimes, setBatchTimes] = useState<string[]>([]);
 
-  // kalendár – mesiac hore
   const [calMonth, setCalMonth] = useState<Date>(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const monthLabel = useMemo(
     () => calMonth.toLocaleDateString('sk-SK', { month: 'long', year: 'numeric' }),
@@ -60,7 +54,6 @@ export default function AdminSlotsClient() {
   );
   const days = useMemo(() => buildMonthMatrix(calMonth), [calMonth]);
 
-  // fetch slotov
   async function loadSlots() {
     setLoading(true);
     setError(null);
@@ -79,7 +72,6 @@ export default function AdminSlotsClient() {
 
   function flashSaved(){ setSaved(true); setTimeout(()=>setSaved(false), 900); }
 
-  // pomocné
   function sortByDateTime(a: Slot, b: Slot) {
     const da = `${a.date}T${a.time}`, db = `${b.date}T${b.time}`;
     return da < db ? -1 : da > db ? 1 : 0;
@@ -90,7 +82,6 @@ export default function AdminSlotsClient() {
   );
   const daysWithSlots = useMemo(() => new Set(slots.map(s => s.date)), [slots]);
 
-  // API akcie
   async function postCreate(date: string, time: string, capacity: number) {
     const res = await fetch('/api/slots', {
       method: 'POST',
@@ -112,7 +103,6 @@ export default function AdminSlotsClient() {
     return json;
   }
 
-  // pridanie 1
   async function addOne() {
     if (!selectedDate || !time) return alert('Vyber dátum aj čas.');
     setBusy(true);
@@ -129,7 +119,6 @@ export default function AdminSlotsClient() {
       alert(e?.message || 'Pridanie zlyhalo.');
     } finally { setBusy(false); }
   }
-  // hromadne
   function addTimeToBatch(){
     if (!time) return;
     if (!/^\d{2}:\d{2}$/.test(time)) return alert('Čas musí byť HH:MM');
@@ -150,7 +139,6 @@ export default function AdminSlotsClient() {
     } finally{ setBusy(false); }
   }
 
-  // úpravy
   async function lock(id:string){ setBusy(true); try{ await patchAction(id,'lock'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Zamknutie zlyhalo.'); } finally{ setBusy(false);} }
   async function unlock(id:string){ setBusy(true); try{ await patchAction(id,'unlock'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Odomknutie zlyhalo.'); } finally{ setBusy(false);} }
   async function del(id:string){ if(!confirm('Vymazať slot?'))return; setBusy(true); try{ await patchAction(id,'delete'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Vymazanie zlyhalo.'); } finally{ setBusy(false);} }
@@ -166,7 +154,7 @@ export default function AdminSlotsClient() {
         {saved && <span className="text-sm text-green-600">Uložené ✓</span>}
       </div>
 
-      {/* KALENDÁR AKO U ZÁKAZNÍKA */}
+      {/* KALENDÁR – 7 stĺpcov × 6 týždňov, tvrdé inline CSS grid */}
       <section className="rounded-2xl border p-4">
         <div className="mb-3 flex items-center justify-between">
           <button
@@ -182,13 +170,17 @@ export default function AdminSlotsClient() {
           >›</button>
         </div>
 
-        {/* hlavička dní */}
-        <div className="grid grid-cols-7 gap-2 text-center text-xs mb-2 opacity-70">
+        {/* hlavička dní (grid inline, keby náhodou Tailwind grid neplatil) */}
+        <div
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}
+          className="text-center text-xs opacity-70"
+        >
           <div>po</div><div>ut</div><div>st</div><div>št</div><div>pia</div><div>so</div><div>ne</div>
         </div>
 
-        {/* mriežka 7×6 — RIADOK = TÝŽDEŇ */}
-        <div className="grid grid-cols-7 gap-2">
+        <div
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}
+        >
           {days.map((d, i) => {
             const id = toYMD(d);
             const inMonth = d.getMonth() === calMonth.getMonth();
@@ -201,8 +193,9 @@ export default function AdminSlotsClient() {
                 key={i}
                 onClick={()=>setSelectedDate(id)}
                 title={fmtDateLabel(d)}
+                style={{ minHeight: 40 }}
                 className={[
-                  'h-10 rounded border text-sm',
+                  'rounded border text-sm w-full',
                   inMonth ? 'bg-white' : 'bg-gray-50 opacity-60',
                   isSelected ? 'bg-black text-white border-black' : '',
                   isToday && !isSelected ? 'ring-1 ring-black/50' : '',
@@ -223,7 +216,6 @@ export default function AdminSlotsClient() {
         <div className="text-sm opacity-70">Vybraný deň:</div>
         <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
 
-        {/* pridávanie časov */}
         <div className="flex flex-wrap items-end gap-2">
           <label className="block">
             <span className="block text-xs mb-1">Čas</span>
@@ -249,7 +241,6 @@ export default function AdminSlotsClient() {
           </div>
         )}
 
-        {/* tabuľka slotov len pre vybraný deň */}
         <div className="rounded-lg border overflow-hidden">
           <table className="w-full text-sm">
             <thead>
