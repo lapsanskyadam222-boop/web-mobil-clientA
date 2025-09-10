@@ -1,150 +1,153 @@
+// app/api/slots/route.ts
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
 
-type Row = {
+type SlotRow = {
   id: string;
-  date: string;  // 'YYYY-MM-DD'
-  time: string;  // 'HH:MM'
+  date: string;     // ISO date z Postgres DATE
+  time: string;     // hm (text "HH:MM")
   locked: boolean;
   capacity: number;
-  booked_count: number; // z tabuľky slots
+  booked_count: number;
 };
 
-function mapRow(r: Row) {
-  const booked = Number(r.booked_count ?? 0) >= Number(r.capacity ?? 1);
-  return {
-    id: r.id,
-    date: r.date,
-    time: r.time,
-    locked: !!r.locked,
-    capacity: Number(r.capacity ?? 1),
-    bookedCount: Number(r.booked_count ?? 0),
-    booked,
-  };
-}
-
-// GET /api/slots[?public=1]
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const isPublic = searchParams.get('public') === '1';
-
-  const supa = getServiceClient();
-
-  // verejnosti servuj iba voľné sloty z view; adminovi všetky sloty
-  const from = isPublic ? 'slots_available' : 'slots';
-  const { data, error } = await supa
-    .from(from)
-    .select('id,date,time,locked,capacity,booked_count')
-    .order('date', { ascending: true })
-    .order('time', { ascending: true });
-
-  if (error) {
-    console.error('GET /api/slots error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({
-    slots: (data as Row[]).map(mapRow),
-  });
-}
-
-// POST /api/slots { date, time, capacity }
-export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const date = String(body?.date ?? '');
-    const time = String(body?.time ?? '');
-    const capacity = Math.max(1, Number(body?.capacity ?? 1));
+    const supa = getServiceClient();
+    const url = new URL(req.url);
+    const isPublic = url.searchParams.get('public') === '1';
 
-    if (!date || !time) {
-      return NextResponse.json({ error: 'Chýba date/time' }, { status: 400 });
+    if (isPublic) {
+      // Verejné - len dostupné
+      const { data, error } = await supa
+        .from('slots_available') // view
+        .select('*')
+        .order('date', { ascending: true })
+        .order('time', { ascending: true });
+
+      if (error) {
+        console.error('GET /slots public error:', error);
+        return NextResponse.json({ error: 'Failed to fetch slots' }, { status: 500 });
+      }
+
+      return NextResponse.json({ slots: (data ?? []) as SlotRow[] });
     }
 
-    const supa = getServiceClient();
+    // Admin - všetky sloty
     const { data, error } = await supa
       .from('slots')
-      .upsert(
-        { id: `${date}_${time.replace(':', '')}`, date, time, capacity, locked: false },
-        { onConflict: 'id' },
-      )
-      .select('id,date,time,locked,capacity,booked_count')
-      .single();
+      .select('*')
+      .order('date', { ascending: true })
+      .order('time', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('GET /slots error:', error);
+      return NextResponse.json({ error: 'Failed to fetch slots' }, { status: 500 });
+    }
 
-    return NextResponse.json({ slot: mapRow(data as Row) }, { status: 201 });
+    return NextResponse.json({ slots: (data ?? []) as SlotRow[] });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Chyba pri zápise' }, { status: 500 });
+    return NextResponse.json({ error: e?.message ?? 'Server error' }, { status: 500 });
   }
 }
 
-// PATCH /api/slots { id, action, ... }
+export async function POST(req: Request) {
+  try {
+    const supa = getServiceClient();
+    const body = await req.json().catch(() => ({}));
+    const { date, time, capacity } = body as {
+      date?: string;
+      time?: string;
+      capacity?: number;
+    };
+
+    if (!date || !time) {
+      return NextResponse.json({ error: 'Missing date or time' }, { status: 400 });
+    }
+
+    const cap = Math.max(1, Number(capacity) || 1);
+    const id = `${date}_${time.replace(':', '')}`;
+
+    const { error } = await supa.from('slots').insert({
+      id,
+      date,
+      time,              // hm text "HH:MM"
+      capacity: cap,
+      locked: false,
+      booked_count: 0,
+    });
+
+    if (error) {
+      // ignoruj conflict (unique date+time), inak vráť chybu
+      if (error.code !== '23505') {
+        console.error('POST /slots error:', error);
+        return NextResponse.json({ error: 'Failed to create slot' }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ ok: true, id });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? 'Server error' }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json();
-    const id = String(body?.id ?? '');
-    const action = String(body?.action ?? '');
-    if (!id || !action) {
-      return NextResponse.json({ error: 'Chýba id alebo action' }, { status: 400 });
-    }
-
     const supa = getServiceClient();
+    const body = await req.json().catch(() => ({}));
+    const { id, action, capacity } = body as {
+      id?: string;
+      action?: 'lock' | 'unlock' | 'delete' | 'capacity' | 'free';
+      capacity?: number;
+    };
 
-    // ---------- UVOĽNIŤ (admin_free_slot) ----------
+    if (!id || !action) {
+      return NextResponse.json({ error: 'Missing id or action' }, { status: 400 });
+    }
+
     if (action === 'free') {
+      // Reset: zmaž rezervácie, booked_count=0, locked=false
       const { data, error } = await supa.rpc('admin_free_slot', { p_slot_id: id });
-      if (error) throw error;
-      // funkcia vracia riadok slotu; keď nie, dotiahni ručne
-      if (Array.isArray(data) && data[0]) {
-        const r = data[0] as Row;
-        return NextResponse.json({ slot: mapRow(r) });
+      if (error) {
+        console.error('admin_free_slot error:', error);
+        return NextResponse.json({ error: 'Free slot failed' }, { status: 500 });
       }
-      const fallback = await supa
-        .from('slots')
-        .select('id,date,time,locked,capacity,booked_count')
-        .eq('id', id)
-        .single();
-      if (fallback.error) throw fallback.error;
-      return NextResponse.json({ slot: mapRow(fallback.data as Row) });
+      const slot = Array.isArray(data) ? data[0] : data;
+      return NextResponse.json({ ok: true, slot });
     }
 
-    // ---------- LOCK / UNLOCK ----------
-    if (action === 'lock' || action === 'unlock') {
-      const locked = action === 'lock';
-      const { data, error } = await supa
-        .from('slots')
-        .update({ locked })
-        .eq('id', id)
-        .select('id,date,time,locked,capacity,booked_count')
-        .single();
-      if (error) throw error;
-      return NextResponse.json({ slot: mapRow(data as Row) });
-    }
-
-    // ---------- ZMENA KAPACITY ----------
-    if (action === 'capacity') {
-      const capacity = Math.max(1, Number(body?.capacity ?? 1));
-      const { data, error } = await supa
-        .from('slots')
-        .update({ capacity })
-        .eq('id', id)
-        .select('id,date,time,locked,capacity,booked_count')
-        .single();
-      if (error) throw error;
-      return NextResponse.json({ slot: mapRow(data as Row) });
-    }
-
-    // ---------- VYMAZAŤ ----------
-    if (action === 'delete') {
-      // (FK na reservations je ON DELETE CASCADE)
-      const { error } = await supa.from('slots').delete().eq('id', id);
-      if (error) throw error;
+    if (action === 'lock') {
+      const { error } = await supa.from<SlotRow>('slots').update({ locked: true }).eq('id', id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true });
     }
 
-    return NextResponse.json({ error: `Neznáma action "${action}"` }, { status: 400 });
+    if (action === 'unlock') {
+      const { error } = await supa.from<SlotRow>('slots').update({ locked: false }).eq('id', id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === 'capacity') {
+      const cap = Math.max(1, Number(capacity) || 1);
+      const { error } = await supa.from<SlotRow>('slots').update({ capacity: cap }).eq('id', id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === 'delete') {
+      // najprv rezervácie (pre istotu; FK ON DELETE CASCADE by to spravil tiež)
+      const { error: er1 } = await supa.from('reservations').delete().eq('slot_id', id);
+      if (er1) return NextResponse.json({ error: er1.message }, { status: 500 });
+
+      const { error: er2 } = await supa.from('slots').delete().eq('id', id);
+      if (er2) return NextResponse.json({ error: er2.message }, { status: 500 });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (e: any) {
-    console.error('PATCH /api/slots error:', e);
-    return NextResponse.json({ error: e?.message ?? 'Chyba' }, { status: 500 });
+    return NextResponse.json({ error: e?.message ?? 'Server error' }, { status: 500 });
   }
 }
