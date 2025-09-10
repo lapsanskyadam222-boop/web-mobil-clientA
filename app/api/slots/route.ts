@@ -1,35 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
 
-/**
- * GET:
- * - /api/slots?public=1  -> vracia len odomknuté a voľné sloty (view slots_available)
- * - /api/slots           -> vracia všetky sloty (tabuľka slots) pre admina
- */
-export async function GET(req: Request) {
+export async function GET() {
   const supa = getServiceClient();
-  const { searchParams } = new URL(req.url);
-  const isPublic = searchParams.get('public') === '1';
-
-  if (isPublic) {
-    const { data, error } = await supa
-      .from('slots_available') // VIEW
-      .select('*')
-      .order('date', { ascending: true })
-      .order('time', { ascending: true });
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ slots: data ?? [] });
-  }
-
-  // admin / interný prehľad – všetky sloty
   const { data, error } = await supa
-    .from('slots') // TABUĽKA
+    .from('slots')
     .select('*')
     .order('date', { ascending: true })
     .order('time', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ slots: data ?? [] });
 }
 
@@ -57,7 +39,10 @@ export async function POST(req: Request) {
       booked_count: 0,
     });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
     return NextResponse.json({ ok: true, id });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Neznáma chyba' }, { status: 500 });
@@ -69,7 +54,7 @@ export async function PATCH(req: Request) {
     const body = await req.json();
     const { id, action, capacity } = body as {
       id?: string;
-      action?: 'lock' | 'unlock' | 'capacity' | 'delete' | 'free';
+      action?: 'lock' | 'unlock' | 'capacity' | 'delete' | 'free' | 'restore';
       capacity?: number;
     };
 
@@ -79,18 +64,21 @@ export async function PATCH(req: Request) {
 
     const supa = getServiceClient();
 
+    // ZAMKNÚŤ
     if (action === 'lock') {
       const { error } = await supa.from('slots').update({ locked: true }).eq('id', id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true });
     }
 
+    // ODOMKNÚŤ
     if (action === 'unlock') {
       const { error } = await supa.from('slots').update({ locked: false }).eq('id', id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true });
     }
 
+    // KAPACITA
     if (action === 'capacity') {
       const cap = Math.max(1, Number(capacity) || 1);
       const { error } = await supa.from('slots').update({ capacity: cap }).eq('id', id);
@@ -98,21 +86,53 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // VYMAZAŤ SLOT (zmaže aj rezervácie cez FK ON DELETE CASCADE)
     if (action === 'delete') {
       const { error } = await supa.from('slots').delete().eq('id', id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true });
     }
 
+    // UVOĽNIŤ (FREE): DB funkcia vymaže rezervácie, locked=false, booked_count=0
     if (action === 'free') {
-      // zavolá DB funkciu, ktorá vymaže rezervácie a resetne počítadlo
-      const { data, error } = await supa.rpc('admin_free_slot', { p_slot_id: id });
+      const { error } = await supa.rpc('admin_free_slot', { p_slot_id: id });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
+    }
 
-      return NextResponse.json({
-        ok: true,
-        slot: Array.isArray(data) ? data[0] : data, // vráti aktuálny stav slotu po resete
+    // OBNOVIŤ (RESTORE): „tvrdý“ re-create — zmaž a znovu vlož ten istý slot
+    if (action === 'restore') {
+      // 1) načítaj parametre slotu
+      const { data: slotData, error: readErr } = await supa
+        .from('slots')
+        .select('date, time, capacity')
+        .eq('id', id)
+        .single();
+      if (readErr || !slotData) {
+        return NextResponse.json({ error: 'Slot sa nenašiel' }, { status: 404 });
+      }
+
+      // 2) zmaž pôvodný
+      const { error: delErr } = await supa.from('slots').delete().eq('id', id);
+      if (delErr) {
+        return NextResponse.json({ error: delErr.message }, { status: 500 });
+      }
+
+      // 3) vytvor nový s rovnakými hodnotami
+      const newId = `${slotData.date}_${slotData.time.replace(':', '')}`;
+      const { error: insErr } = await supa.from('slots').insert({
+        id: newId,
+        date: slotData.date,
+        time: slotData.time,
+        capacity: slotData.capacity,
+        locked: false,
+        booked_count: 0,
       });
+      if (insErr) {
+        return NextResponse.json({ error: insErr.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ ok: true, id: newId });
     }
 
     return NextResponse.json({ error: 'Neznáma akcia.' }, { status: 400 });

@@ -2,15 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type Slot = {
-  id: string;
-  date: string;
-  time: string;
-  locked: boolean;
-  capacity: number;
-  bookedCount: number;
-  booked: boolean; // derived on server (booked_count >= capacity)
-};
+type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean; capacity?: number };
 
 export default function AdminSlotsClient() {
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -20,7 +12,7 @@ export default function AdminSlotsClient() {
 
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
-  const [cap, setCap] = useState(1);
+  const [cap,  setCap ] = useState(1);
 
   async function fetchSlots() {
     const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
@@ -30,73 +22,40 @@ export default function AdminSlotsClient() {
 
   useEffect(() => {
     let m = true;
-    (async () => {
-      try {
-        await fetchSlots();
-      } finally {
-        if (m) setLoading(false);
-      }
-    })();
-    return () => {
-      m = false;
-    };
+    (async () => { try { await fetchSlots(); } finally { if (m) setLoading(false); } })();
+    return () => { m = false; };
   }, []);
 
-  // debounce refetch
   const refTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function scheduleRefetch(ms = 300) {
     if (refTimer.current) clearTimeout(refTimer.current);
     refTimer.current = setTimeout(async () => {
-      try {
-        await fetchSlots();
-      } finally {
-        refTimer.current = null;
-      }
+      try { await fetchSlots(); } finally { refTimer.current = null; }
     }, ms);
   }
-
-  function flashSaved() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 700);
-  }
+  function flashSaved() { setSaved(true); setTimeout(()=>setSaved(false), 700); }
 
   function upsertLocal(s: Slot) {
-    setSlots((curr) => {
-      const i = curr.findIndex((x) => x.id === s.id);
-      if (i >= 0) {
-        const next = curr.slice();
-        next[i] = { ...curr[i], ...s };
-        return next;
-      }
+    setSlots(curr => {
+      const i = curr.findIndex(x => x.id === s.id);
+      if (i >= 0) { const next = curr.slice(); next[i] = { ...curr[i], ...s }; return next; }
       return curr.concat(s);
     });
   }
   function patchLocal(id: string, p: Partial<Slot>) {
-    setSlots((curr) => {
-      const i = curr.findIndex((x) => x.id === id);
+    setSlots(curr => {
+      const i = curr.findIndex(x => x.id === id);
       if (i < 0) return curr;
-      const next = curr.slice();
-      next[i] = { ...curr[i], ...p };
-      return next;
+      const next = curr.slice(); next[i] = { ...curr[i], ...p }; return next;
     });
   }
-  function removeLocal(id: string) {
-    setSlots((curr) => curr.filter((s) => s.id !== id));
-  }
+  function removeLocal(id: string) { setSlots(curr => curr.filter(s => s.id !== id)); }
 
   async function addOne() {
     if (!date || !time) return alert('Zadaj dátum aj čas.');
     const safeCap = Math.max(1, Number.isFinite(+cap) ? +cap : 1);
 
-    const temp: Slot = {
-      id: `${date}_${time.replace(':', '')}`,
-      date,
-      time,
-      locked: false,
-      capacity: safeCap,
-      bookedCount: 0,
-      booked: false,
-    };
+    const temp: Slot = { id: `${date}_${time.replace(':','')}`, date, time, locked: false, booked: false, capacity: safeCap };
     upsertLocal(temp);
     setBusy(true);
     try {
@@ -127,9 +86,7 @@ export default function AdminSlotsClient() {
       });
       scheduleRefetch();
       flashSaved();
-    } catch {
-      scheduleRefetch(0);
-    }
+    } catch { scheduleRefetch(0); }
   }
 
   async function changeCap(s: Slot, value: number) {
@@ -143,25 +100,7 @@ export default function AdminSlotsClient() {
       });
       scheduleRefetch();
       flashSaved();
-    } catch {
-      scheduleRefetch(0);
-    }
-  }
-
-  async function freeSlot(s: Slot) {
-    // optimisticky: sprav z toho voľný slot
-    patchLocal(s.id, { bookedCount: 0, booked: false, locked: false });
-    try {
-      await fetch('/api/slots', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: s.id, action: 'free' }),
-      });
-      scheduleRefetch();
-      flashSaved();
-    } catch {
-      scheduleRefetch(0);
-    }
+    } catch { scheduleRefetch(0); }
   }
 
   async function removeOne(s: Slot) {
@@ -174,17 +113,29 @@ export default function AdminSlotsClient() {
       });
       scheduleRefetch();
       flashSaved();
+    } catch { scheduleRefetch(0); }
+  }
+
+  // NOVÉ: Obnoviť (hard re-create)
+  async function restoreOne(s: Slot) {
+    try {
+      await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: s.id, action: 'restore' }),
+      });
+      scheduleRefetch();
+      flashSaved();
     } catch {
       scheduleRefetch(0);
     }
   }
 
-  // group by day
   const grouped = useMemo(() => {
     const by: Record<string, Slot[]> = {};
     for (const s of slots) (by[s.date] ||= []).push(s);
-    for (const d of Object.keys(by)) by[d].sort((a, b) => (a.time < b.time ? -1 : 1));
-    return Object.entries(by).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    for (const d of Object.keys(by)) by[d].sort((a,b)=> a.time<b.time?-1:1);
+    return Object.entries(by).sort((a,b)=> a[0]<b[0]?-1:1);
   }, [slots]);
 
   if (loading) return <main className="p-6">Načítavam…</main>;
@@ -199,25 +150,17 @@ export default function AdminSlotsClient() {
       <div className="flex gap-2 items-end flex-wrap">
         <label className="block">
           <span className="block text-xs mb-1">Dátum</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border rounded px-3 py-2" />
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="border rounded px-3 py-2" />
         </label>
         <label className="block">
           <span className="block text-xs mb-1">Čas</span>
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="border rounded px-3 py-2" />
+          <input type="time" value={time} onChange={e=>setTime(e.target.value)} className="border rounded px-3 py-2" />
         </label>
         <label className="block">
           <span className="block text-xs mb-1">Kapacita</span>
-          <input
-            type="number"
-            min={1}
-            value={cap}
-            onChange={(e) => setCap(Math.max(1, Number(e.target.value) || 1))}
-            className="border rounded px-3 py-2 w-24"
-          />
+          <input type="number" min={1} value={cap} onChange={e=>setCap(Math.max(1, Number(e.target.value)||1))} className="border rounded px-3 py-2 w-24" />
         </label>
-        <button onClick={addOne} disabled={busy} className="rounded bg-black text-white px-4 py-2 disabled:opacity-50">
-          Pridať 1
-        </button>
+        <button onClick={addOne} disabled={busy} className="rounded bg-black text-white px-4 py-2 disabled:opacity-50">Pridať 1</button>
       </div>
 
       <div className="space-y-4">
@@ -225,41 +168,30 @@ export default function AdminSlotsClient() {
           <div key={day} className="rounded border">
             <div className="px-3 py-2 text-sm font-semibold bg-gray-50">{day}</div>
             <div className="p-3 space-y-2">
-              {list.map((s) => {
-                const stav = s.booked ? 'Rezervované' : s.locked ? 'Zamknuté' : 'Voľné';
-                const stavClass =
-                  s.booked ? 'text-red-600' : s.locked ? 'text-amber-600' : 'text-emerald-600';
-                const left = Math.max(0, (s.capacity ?? 1) - (s.bookedCount ?? 0));
-
-                return (
-                  <div key={s.id} className="flex items-center gap-2">
-                    <div className="w-20">{s.time}</div>
-
-                    <div className={`w-28 text-sm ${stavClass}`}>{stav}</div>
-                    <div className="text-xs opacity-70 w-28">Voľné miesta: {left}</div>
-
-                    <input
-                      type="number"
-                      min={1}
-                      value={s.capacity ?? 1}
-                      onChange={(e) => changeCap(s, Number(e.target.value) || 1)}
-                      className="border rounded px-2 py-1 w-20"
-                    />
-
-                    <button onClick={() => toggleLock(s)} className="rounded border px-2 py-1">
-                      {s.locked ? 'Odomknúť' : 'Zamknúť'}
-                    </button>
-
-                    <button onClick={() => freeSlot(s)} className="rounded border px-2 py-1">
-                      Uvoľniť
-                    </button>
-
-                    <button onClick={() => removeOne(s)} className="rounded border px-2 py-1">
-                      Vymazať
-                    </button>
+              {list.map(s => (
+                <div key={s.id} className="flex items-center gap-2">
+                  <div className="w-16">{s.time}</div>
+                  <input
+                    type="number"
+                    min={1}
+                    value={s.capacity ?? 1}
+                    onChange={e=>changeCap(s, Number(e.target.value)||1)}
+                    className="border rounded px-2 py-1 w-20"
+                  />
+                  <div className="text-xs opacity-70 w-28">
+                    {s.locked ? 'Zamknuté' : 'Voľné'}
                   </div>
-                );
-              })}
+                  <button onClick={()=>toggleLock(s)} className="rounded border px-2 py-1">
+                    {s.locked ? 'Odomknúť' : 'Zamknúť'}
+                  </button>
+                  <button onClick={()=>restoreOne(s)} className="rounded border px-2 py-1">
+                    Obnoviť
+                  </button>
+                  <button onClick={()=>removeOne(s)} className="rounded border px-2 py-1">
+                    Vymazať
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         ))}
