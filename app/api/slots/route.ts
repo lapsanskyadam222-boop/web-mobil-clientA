@@ -1,17 +1,35 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
 
-export async function GET() {
+/**
+ * GET:
+ * - /api/slots?public=1  -> vracia len odomknuté a voľné sloty (view slots_available)
+ * - /api/slots           -> vracia všetky sloty (tabuľka slots) pre admina
+ */
+export async function GET(req: Request) {
   const supa = getServiceClient();
+  const { searchParams } = new URL(req.url);
+  const isPublic = searchParams.get('public') === '1';
+
+  if (isPublic) {
+    const { data, error } = await supa
+      .from('slots_available') // VIEW
+      .select('*')
+      .order('date', { ascending: true })
+      .order('time', { ascending: true });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ slots: data ?? [] });
+  }
+
+  // admin / interný prehľad – všetky sloty
   const { data, error } = await supa
-    .from('slots')
+    .from('slots') // TABUĽKA
     .select('*')
     .order('date', { ascending: true })
     .order('time', { ascending: true });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ slots: data ?? [] });
 }
 
@@ -39,10 +57,7 @@ export async function POST(req: Request) {
       booked_count: 0,
     });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, id });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Neznáma chyba' }, { status: 500 });
@@ -90,13 +105,13 @@ export async function PATCH(req: Request) {
     }
 
     if (action === 'free') {
-      // použijeme DB funkciu admin_free_slot -> tá vymaže rezervácie a resetne slot
+      // zavolá DB funkciu, ktorá vymaže rezervácie a resetne počítadlo
       const { data, error } = await supa.rpc('admin_free_slot', { p_slot_id: id });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
       return NextResponse.json({
         ok: true,
-        slot: Array.isArray(data) ? data[0] : data, // vrátime nový stav slotu
+        slot: Array.isArray(data) ? data[0] : data, // vráti aktuálny stav slotu po resete
       });
     }
 
