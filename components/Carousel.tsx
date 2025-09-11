@@ -5,20 +5,16 @@ import Image from 'next/image';
 
 type Props = {
   images: string[];
-  /** Pomer strán – napr. '4/5', '1/1', '16/9'. Default 4/5. */
-  aspect?: string;
-  /** Jemný rádius v px (default 6). */
-  radius?: number;
-  /** Max šírka na desktope (default 720px – približne šírka textu). */
-  desktopMaxWidth?: number;
-  /** Dodatočné className pre obal sekcie (nepovinné). */
+  aspect?: string;            // napr. '4/5'
+  radius?: number;            // jemný rádius, default 6
+  desktopMaxWidth?: number;   // cap na desktope (px), default 720
   className?: string;
 };
 
 function aspectToPaddingPercent(aspect?: string) {
   const raw = (aspect ?? '4/5').replace(/\s/g, '');
   const [w, h] = raw.split('/').map(Number);
-  if (!w || !h) return 125; // fallback = 4/5 -> 125 %
+  if (!w || !h) return 125;
   return (h / w) * 100;
 }
 
@@ -26,7 +22,7 @@ export default function Carousel({
   images,
   aspect = '4/5',
   radius = 6,
-  desktopMaxWidth = 720,            // <— nový parameter
+  desktopMaxWidth = 720,
   className = '',
 }: Props) {
   const total = Array.isArray(images) ? images.length : 0;
@@ -50,7 +46,7 @@ export default function Carousel({
   }, []);
 
   const begin = (e: React.PointerEvent) => {
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
     lockRef.current = null;
     setDragging(true);
@@ -88,7 +84,6 @@ export default function Carousel({
 
   if (!total) return null;
 
-  // úzky vnútorný okraj; na mobile ~8 px, na väčších obrazovkách môže byť mierne väčší
   const PAD_INLINE = 'clamp(8px, 3vw, 20px)';
 
   return (
@@ -101,43 +96,42 @@ export default function Carousel({
         transform: 'translateX(-50%)',
       }}
     >
-      {/* CONTAINER – zmenšené maximum na desktope, centrované */}
       <div
         style={{
           paddingLeft: PAD_INLINE,
           paddingRight: PAD_INLINE,
           margin: '0 auto',
-          maxWidth: `${desktopMaxWidth}px`, // <— menšie maximum na desktope
+          maxWidth: `${desktopMaxWidth}px`,
           boxSizing: 'border-box',
         }}
       >
-        {/* VIEWPORT */}
+        {/* VIEWPORT — tu sú pointer handlery */}
         <div
           ref={wrapRef}
+          onPointerDown={begin}
+          onPointerMove={move}
+          onPointerUp={end}
+          onPointerCancel={end}
+          onPointerLeave={end}
           style={{
             position: 'relative',
             width: '100%',
             overflow: 'hidden',
             borderRadius: `${radius}px`,
             background: 'rgba(0,0,0,0.05)',
-            cursor: dragging ? 'grabbing' : 'grab', // vizuálna indikácia ťahania
+            touchAction: 'pan-y',          // nechá zvislé scrollovanie
+            cursor: dragging ? 'grabbing' : 'grab',
           }}
         >
           {/* TRACK */}
           <div
             style={{
               display: 'flex',
-              touchAction: 'pan-y',
               userSelect: 'none',
               transform: `translate3d(${tx}%, 0, 0)`,
               transition: dragging ? 'none' : 'transform 300ms ease',
               willChange: 'transform',
             }}
-            onPointerDown={begin}
-            onPointerMove={move}
-            onPointerUp={end}
-            onPointerCancel={end}
-            onPointerLeave={end}
             aria-label="carousel-track"
           >
             {images.map((src, i) => (
