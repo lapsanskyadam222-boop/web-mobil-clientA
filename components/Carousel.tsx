@@ -8,7 +8,9 @@ type Props = {
   aspect?: string;
   /** Dodatočné className pre obal sekcie (nepovinné). */
   className?: string;
-  /** Jemný rádius rohova (px). Default 4. */
+  /** Pevný „frame“ od okrajov displeja v px. Default 16. */
+  edge?: number;
+  /** Jemný rádius rámika (px). Default 4. */
   radius?: number;
 };
 
@@ -23,7 +25,8 @@ export default function Carousel({
   images,
   aspect = '4/5',
   className = '',
-  radius = 4, // jemný, takmer rovný roh
+  edge = 16,         // koľko „bieleho“ okraja od kraja displeja
+  radius = 4,        // jemný zaoblený roh (takmer neviditeľný)
 }: Props) {
   const total = Array.isArray(images) ? images.length : 0;
   const [index, setIndex] = React.useState(0);
@@ -86,19 +89,20 @@ export default function Carousel({
 
   if (!total) return null;
 
-  const radiusPx = `${Math.max(0, radius)}px`;
+  // Šírka podľa displeja: vždy rovnaký frame od okrajov
+  const widthClamp = `min(100%, calc(100vw - ${2 * edge}px))`;
 
   return (
     <section className={className}>
       {/* VIEWPORT */}
       <div
         ref={wrapRef}
-        // overflow hidden + jemné zaoblenie a nevtieravé pozadie
         style={{
           position: 'relative',
-          width: '100%',
+          width: widthClamp,
+          marginInline: 'auto',
           overflow: 'hidden',
-          borderRadius: radiusPx,     // << jemný rádius
+          borderRadius: `${radius}px`,
           background: 'rgba(0,0,0,0.05)',
         }}
       >
@@ -120,15 +124,7 @@ export default function Carousel({
           aria-label="carousel-track"
         >
           {images.map((src, i) => (
-            <div
-              key={i}
-              style={{
-                position: 'relative',
-                flex: '0 0 100%',
-                overflow: 'hidden',
-                borderRadius: radiusPx, // << zhodný rádius aj na slidoch (bez presahov)
-              }}
-            >
+            <div key={i} style={{ position: 'relative', flex: '0 0 100%', overflow: 'hidden' }}>
               {/* ratio-box podľa pomeru (držanie výšky) */}
               <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
               <div style={{ position: 'absolute', inset: 0 }}>
@@ -136,12 +132,7 @@ export default function Carousel({
                 <img
                   src={src}
                   alt={`slide-${i + 1}`}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    display: 'block',
-                  }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   draggable={false}
                   loading={i === 0 ? 'eager' : 'lazy'}
                 />
