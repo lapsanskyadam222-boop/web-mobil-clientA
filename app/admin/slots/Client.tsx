@@ -21,7 +21,7 @@ function fmtDateLabel(d: Date) {
   return d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-/** poskladá týždne len pre daný mesiac */
+/** týždne iba pre daný mesiac */
 function buildMonthWeeks(monthAnchor: Date): Date[][] {
   const first = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
   const startOffset = (first.getDay() + 6) % 7; // Po=0..Ne=6
@@ -44,7 +44,7 @@ function buildMonthWeeks(monthAnchor: Date): Date[][] {
   return weeks;
 }
 
-/** zmeria šírku elementu (kalendára), aby sme ňou ohraničili panel */
+/** zmeria šírku kalendára, aby sme ňou ohraničili panel */
 function useMeasuredWidth<T extends HTMLElement>(): [React.RefObject<T>, number | null] {
   const ref = useRef<T>(null);
   const [w, setW] = useState<number | null>(null);
@@ -281,8 +281,8 @@ export default function AdminSlotsClient() {
           </div>
         )}
 
-        {/* KARTY – viditeľné do < lg (žiadne presahy) */}
-        <div className="lg:hidden space-y-3">
+        {/* KARTY – jediný layout na všetkých šírkach */}
+        <div className="space-y-3">
           {selectedSlots.length === 0 && (
             <div className="text-center text-gray-500 py-6 text-sm">Žiadne sloty pre tento deň.</div>
           )}
@@ -299,7 +299,7 @@ export default function AdminSlotsClient() {
               </div>
 
               <div className="mt-2 flex items-center gap-2">
-                <label className="text-xs opacity-70">Kapacita</label>
+                <label className="text-xs opacity-70 whitespace-nowrap">Kapacita</label>
                 <input
                   type="number"
                   min={1}
@@ -308,7 +308,9 @@ export default function AdminSlotsClient() {
                   className="border rounded px-1 py-1 w-12"
                   disabled={busy}
                 />
-                <span className="text-xs opacity-60 ml-auto">({s.booked_count ?? 0} / {s.capacity ?? 1})</span>
+                <span className="text-xs opacity-60 ml-auto whitespace-nowrap">
+                  ({s.booked_count ?? 0} / {s.capacity ?? 1})
+                </span>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -334,86 +336,6 @@ export default function AdminSlotsClient() {
               </div>
             </div>
           ))}
-        </div>
-
-        {/* TABUĽKA – zapne sa až od lg (≥ 1024 px) */}
-        <div className="hidden lg:block rounded-lg border overflow-x-hidden min-w-0">
-          <table className="w-full table-fixed text-xs sm:text-sm">
-            <colgroup>
-              <col className="w-[26%]" />  {/* Čas */}
-              <col className="w-[10%]" />  {/* Kapacita */}
-              <col className="w-[18%]" />  {/* Stav */}
-              <col className="w-[46%]" />  {/* Akcie */}
-            </colgroup>
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border px-2 py-1 text-left">Čas</th>
-                <th className="border px-1 py-1 text-left whitespace-nowrap">Kapacita</th>
-                <th className="border px-2 py-1 text-left">Stav</th>
-                <th className="border px-2 py-1 text-right">Akcie</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectedSlots.length===0 && (
-                <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-500">Žiadne sloty pre tento deň.</td></tr>
-              )}
-              {selectedSlots.map(s=>(
-                <tr key={s.id}>
-                  <td className="border px-2 py-1">{s.time}</td>
-                  <td className="border px-1 py-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <input
-                        type="number"
-                        min={1}
-                        value={s.capacity ?? 1}
-                        onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-1 py-1 w-10"
-                        disabled={busy}
-                      />
-                      <span className="text-xs opacity-60 whitespace-nowrap">
-                        ({s.booked_count ?? 0} / {s.capacity ?? 1})
-                      </span>
-                    </div>
-                  </td>
-                  <td className="border px-2 py-1 align-top">
-                    <div className="min-w-0 max-w-full leading-tight text-xs">
-                      <span className={`inline-block rounded px-2 py-0.5 ${ (s.booked_count??0) > 0 ? 'bg-gray-900 text-white' : 'bg-gray-200'}`}>
-                        {(s.booked_count??0) > 0 ? 'Rezervované' : 'Voľné'}
-                      </span>
-                      {s.locked && (
-                        <span className="ml-1 inline-block rounded px-2 py-0.5 bg-amber-200 text-amber-900 break-words">
-                          Zamknuté
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="border px-2 py-1">
-                    <div className="flex flex-wrap justify-end gap-1 sm:gap-2 text-xs sm:text-sm">
-                      {!s.locked ? (
-                        <button onClick={()=>lock(s.id)} disabled={busy}
-                                className="px-2 py-1 border rounded hover:bg-gray-100 whitespace-nowrap">
-                          Zamknúť
-                        </button>
-                      ) : (
-                        <button onClick={()=>unlock(s.id)} disabled={busy}
-                                className="px-2 py-1 border rounded hover:bg-gray-100 whitespace-nowrap">
-                          Odomknúť
-                        </button>
-                      )}
-                      <button onClick={()=>del(s.id)} disabled={busy}
-                              className="px-2 py-1 border rounded text-red-600 hover:bg-gray-100 whitespace-nowrap">
-                        Vymazať
-                      </button>
-                      <button onClick={()=>free(s.id)} disabled={busy}
-                              className="px-2 py-1 rounded bg-black text-white hover:brightness-110 whitespace-nowrap">
-                        Obnoviť
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
 
         {error && <p className="text-red-600">{error}</p>}
