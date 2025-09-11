@@ -6,18 +6,20 @@ type Props = {
   images: string[];
   /** Pomer strán – napr. '4/5', '1/1', '16/9'. Default 4/5. */
   aspect?: string;
-  /** Dodatočné className pre obal sekcie (nepovinné). */
+  /** Voliteľná className pre <section>. */
   className?: string;
-  /** Pevný „frame“ od okrajov displeja v px. Default 16. */
+  /** Okraj od kraja displeja v px (čím menší, tým väčší carousel). Default 8. */
   edge?: number;
   /** Jemný rádius rámika (px). Default 4. */
   radius?: number;
+  /** Voliteľný desktopový strop šírky v px (napr. 1100). Ak nechceš strop, nechaj undefined. */
+  maxWidth?: number;
 };
 
 function aspectToPaddingPercent(aspect?: string) {
   const raw = (aspect ?? '4/5').replace(/\s/g, '');
   const [w, h] = raw.split('/').map(Number);
-  if (!w || !h) return 125; // fallback = 4/5 -> 125 %
+  if (!w || !h) return 125;
   return (h / w) * 100;
 }
 
@@ -25,8 +27,9 @@ export default function Carousel({
   images,
   aspect = '4/5',
   className = '',
-  edge = 16,         // koľko „bieleho“ okraja od kraja displeja
-  radius = 4,        // jemný zaoblený roh (takmer neviditeľný)
+  edge = 8,          // menší okraj = väčší carousel
+  radius = 4,
+  maxWidth,          // napr. 1200 pre desktop cap; na mobile je to aj tak 100vw - 2*edge
 }: Props) {
   const total = Array.isArray(images) ? images.length : 0;
   const [index, setIndex] = React.useState(0);
@@ -38,7 +41,6 @@ export default function Carousel({
   const widthRef = React.useRef(1);
   const lockRef = React.useRef<'x' | 'y' | null>(null);
 
-  // zmeraj šírku viewportu (na prepočet ťahania v %)
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -62,7 +64,7 @@ export default function Carousel({
     const dx = e.clientX - startX.current;
 
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return; // neblokuj vertikálny scroll pri malom pohybe
+      if (Math.abs(dx) < 6) return;
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -75,7 +77,6 @@ export default function Carousel({
     if (!dragging) return;
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
-    // prah = 1/4 šírky
     if (delta <= -0.25 && index < total - 1) next = index + 1;
     if (delta >=  0.25 && index > 0)        next = index - 1;
     setIndex(next);
@@ -84,28 +85,30 @@ export default function Carousel({
     lockRef.current = null;
   };
 
+  if (!total) return null;
+
   const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
   const padTop = aspectToPaddingPercent(aspect);
 
-  if (!total) return null;
-
-  // Šírka podľa displeja: vždy rovnaký frame od okrajov
-  const widthClamp = `min(100%, calc(100vw - ${2 * edge}px))`;
+  // FULL-BLEED TRIK:
+  // - šírka je podľa viewportu (100vw), nie rodiča
+  // - vycentrujeme tým, že posunieme marginmi zľava/ zprava
+  // - edge určuje okraj od kraja displeja
+  const bleed: React.CSSProperties = {
+    width: `calc(100vw - ${2 * edge}px)`,
+    marginLeft: `calc(50% - 50vw + ${edge}px)`,
+    marginRight: `calc(50% - 50vw + ${edge}px)`,
+    ...(maxWidth ? { maxWidth, marginInline: 'auto' } : null),
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: `${radius}px`,
+    background: 'rgba(0,0,0,0.05)',
+  };
 
   return (
     <section className={className}>
       {/* VIEWPORT */}
-      <div
-        ref={wrapRef}
-        style={{
-          position: 'relative',
-          width: widthClamp,
-          marginInline: 'auto',
-          overflow: 'hidden',
-          borderRadius: `${radius}px`,
-          background: 'rgba(0,0,0,0.05)',
-        }}
-      >
+      <div ref={wrapRef} style={bleed}>
         {/* TRACK */}
         <div
           style={{
@@ -125,7 +128,7 @@ export default function Carousel({
         >
           {images.map((src, i) => (
             <div key={i} style={{ position: 'relative', flex: '0 0 100%', overflow: 'hidden' }}>
-              {/* ratio-box podľa pomeru (držanie výšky) */}
+              {/* ratio-box */}
               <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
               <div style={{ position: 'absolute', inset: 0 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
