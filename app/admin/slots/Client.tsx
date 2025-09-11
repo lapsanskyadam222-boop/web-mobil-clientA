@@ -73,6 +73,9 @@ export default function AdminSlotsClient() {
   const [cap, setCap] = useState(1);
   const [batchTimes, setBatchTimes] = useState<string[]>([]);
 
+  // ENTROVÉ ULOŽENIE: lokálne drafty kapacít pre sloty
+  const [capDraft, setCapDraft] = useState<Record<string, string>>({});
+
   const [calMonth, setCalMonth] = useState<Date>(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const monthLabel = useMemo(
     () => calMonth.toLocaleDateString('sk-SK', { month: 'long', year: 'numeric' }),
@@ -89,7 +92,8 @@ export default function AdminSlotsClient() {
       const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Nepodarilo sa načítať sloty.');
-      setSlots(Array.isArray(json.slots) ? json.slots : []);
+      const arr: Slot[] = Array.isArray(json.slots) ? json.slots : [];
+      setSlots(arr);
     } catch (e:any) {
       setError(e?.message || 'Chyba pri načítaní slotov.');
     } finally {
@@ -97,6 +101,16 @@ export default function AdminSlotsClient() {
     }
   }
   useEffect(() => { loadSlots(); }, []);
+
+  // Pri zmene vybraného dňa/slotov obnov drafty kapacít pre tento deň
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    slots
+      .filter(s => s.date === selectedDate)
+      .forEach(s => { map[s.id] = String(s.capacity ?? 1); });
+    setCapDraft(map);
+  }, [slots, selectedDate]);
+
   const flashSaved = () => { setSaved(true); setTimeout(()=>setSaved(false), 900); };
 
   function sortByDateTime(a: Slot, b: Slot) {
@@ -170,7 +184,25 @@ export default function AdminSlotsClient() {
   async function unlock(id:string){ setBusy(true); try{ await patchAction(id,'unlock'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Odomknutie zlyhalo.'); } finally{ setBusy(false);} }
   async function del(id:string){ if(!confirm('Vymazať slot?'))return; setBusy(true); try{ await patchAction(id,'delete'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Vymazanie zlyhalo.'); } finally{ setBusy(false);} }
   async function free(id:string){ if(!confirm('Obnoviť (zmazať rezervácie a uvoľniť)?'))return; setBusy(true); try{ await patchAction(id,'free'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Obnovenie zlyhalo.'); } finally{ setBusy(false);} }
-  async function changeCap(id:string, v:number){ setBusy(true); try{ await patchAction(id,'capacity',{ capacity:Math.max(1, +v||1) }); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Zmena kapacity zlyhala.'); } finally{ setBusy(false);} }
+
+  // ULOŽENIE KAPACITY len na Enter/Blur
+  async function saveCapacity(id: string) {
+    const draft = capDraft[id];
+    if (!draft) return;
+    const v = Math.max(1, Number(draft) || 1);
+    const current = selectedSlots.find(s => s.id === id)?.capacity ?? 1;
+    if (v === current) return; // žiadna zmena
+    setBusy(true);
+    try {
+      await patchAction(id, 'capacity', { capacity: v });
+      await loadSlots();
+      flashSaved();
+    } catch (e:any) {
+      alert(e?.message || 'Zmena kapacity zlyhala.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (loading) return <main className="p-6">Načítavam…</main>;
 
@@ -236,36 +268,46 @@ export default function AdminSlotsClient() {
         <div className="text-sm opacity-70">Vybraný deň:</div>
         <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
 
+        {/* Ovládací rad – na úzkych šírkach sa zalomí do riadkov */}
         <div className="flex flex-wrap items-end gap-2 min-w-0">
-          <label className="block">
+          <label className="block w-full sm:w-auto">
             <span className="block text-xs mb-1">Čas</span>
             <input type="time" value={time} onChange={e=>setTime(e.target.value)}
-                   className="border rounded px-3 py-2" disabled={busy}/>
+                   className="border rounded px-3 py-2 w-full sm:w-auto" disabled={busy}/>
           </label>
-          <label className="block">
+          <label className="block w-24 sm:w-auto">
             <span className="block text-xs mb-1">Kapacita</span>
             <input
               type="number"
               min={1}
               value={cap}
               onChange={e=>setCap(Math.max(1, +e.target.value||1))}
-              className="border rounded px-1 py-2 w-12 sm:w-16"
+              className="border rounded px-1 py-2 w-full sm:w-16"
               disabled={busy}
             />
           </label>
-          <button onClick={addOne}
-                  className="rounded bg-black text-white px-3 sm:px-4 py-2 text-xs sm:text-sm disabled:opacity-50"
-                  disabled={busy || !time}>
+
+          <button
+            onClick={addOne}
+            className="rounded bg-black text-white px-3 sm:px-4 py-2 text-xs sm:text-sm disabled:opacity-50 w-full sm:w-auto"
+            disabled={busy || !time}
+          >
             Pridať 1
           </button>
-          <button onClick={addTimeToBatch}
-                  className="rounded border px-3 py-2 text-xs sm:text-sm disabled:opacity-50"
-                  disabled={busy || !time}>
+
+          <button
+            onClick={addTimeToBatch}
+            className="rounded border px-3 py-2 text-xs sm:text-sm disabled:opacity-50 w-full sm:w-auto"
+            disabled={busy || !time}
+          >
             Pridať do zoznamu
           </button>
-          <button onClick={submitBatch}
-                  className="rounded bg-black text-white px-3 sm:px-4 py-2 text-xs sm:text-sm disabled:opacity-50"
-                  disabled={busy || batchTimes.length===0}>
+
+          <button
+            onClick={submitBatch}
+            className="rounded bg-black text-white px-3 sm:px-4 py-2 text-xs sm:text-sm disabled:opacity-50 w-full sm:w-auto"
+            disabled={busy || batchTimes.length===0}
+          >
             Pridať všetky ({batchTimes.length})
           </button>
         </div>
@@ -281,7 +323,7 @@ export default function AdminSlotsClient() {
           </div>
         )}
 
-        {/* KARTY – jediný layout na všetkých šírkach */}
+        {/* KARTY – jediný layout */}
         <div className="space-y-3">
           {selectedSlots.length === 0 && (
             <div className="text-center text-gray-500 py-6 text-sm">Žiadne sloty pre tento deň.</div>
@@ -291,25 +333,37 @@ export default function AdminSlotsClient() {
               <div className="flex items-center justify-between gap-3">
                 <div className="font-semibold text-base">{s.time}</div>
                 <div className="flex items-center gap-1">
-                  <span className={`inline-block rounded px-2 py-0.5 text-xs ${ (s.booked_count??0) > 0 ? 'bg-gray-900 text-white' : 'bg-gray-200'}`}>
-                    {(s.booked_count??0) > 0 ? 'Rezervované' : 'Voľné'}
+                  {/* 1) Rezervované vždy čitateľné: tmavý text na svetlom pozadí */}
+                  <span
+                    className={[
+                      'inline-block rounded px-2 py-0.5 text-xs border',
+                      (s.booked_count ?? 0) > 0
+                        ? 'bg-gray-100 text-gray-900 border-gray-300'
+                        : 'bg-gray-100 text-gray-900 border-gray-300'
+                    ].join(' ')}
+                  >
+                    {(s.booked_count ?? 0) > 0 ? 'Rezervované' : 'Voľné'}
                   </span>
                   {s.locked && <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">Zamknuté</span>}
                 </div>
               </div>
 
+              {/* 2) Kapacita – ukladá sa Enter/Blur, nie pri písaní */}
               <div className="mt-2 flex items-center gap-2">
                 <label className="text-xs opacity-70 whitespace-nowrap">Kapacita</label>
                 <input
                   type="number"
                   min={1}
-                  value={s.capacity ?? 1}
-                  onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
+                  value={capDraft[s.id] ?? String(s.capacity ?? 1)}
+                  onChange={e => setCapDraft(prev => ({ ...prev, [s.id]: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); saveCapacity(s.id); } }}
+                  onBlur={() => saveCapacity(s.id)}
                   className="border rounded px-1 py-1 w-12"
                   disabled={busy}
+                  inputMode="numeric"
                 />
                 <span className="text-xs opacity-60 ml-auto whitespace-nowrap">
-                  ({s.booked_count ?? 0} / {s.capacity ?? 1})
+                  ({s.booked_count ?? 0} / {capDraft[s.id] ?? (s.capacity ?? 1)})
                 </span>
               </div>
 
