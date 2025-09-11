@@ -7,6 +7,8 @@ type Props = {
   images: string[];
   /** Pomer strán – napr. '4/5', '1/1', '16/9'. Default 4/5. */
   aspect?: string;
+  /** Jemný rádius v px (default 6). */
+  radius?: number;
   /** Dodatočné className pre obal sekcie (nepovinné). */
   className?: string;
 };
@@ -21,6 +23,7 @@ function aspectToPaddingPercent(aspect?: string) {
 export default function Carousel({
   images,
   aspect = '4/5',
+  radius = 6, // menší, takmer neviditeľný
   className = '',
 }: Props) {
   const total = Array.isArray(images) ? images.length : 0;
@@ -72,7 +75,7 @@ export default function Carousel({
     let next = index;
     // prah = 1/4 šírky
     if (delta <= -0.25 && index < total - 1) next = index + 1;
-    if (delta >= 0.25 && index > 0) next = index - 1;
+    if (delta >=  0.25 && index > 0)        next = index - 1;
     setIndex(next);
     setDragX(0);
     setDragging(false);
@@ -84,64 +87,80 @@ export default function Carousel({
 
   if (!total) return null;
 
+  // univerzálny vnútorný padding okolo carouselu (užší na mobile)
+  const PAD_INLINE = 'clamp(8px, 3vw, 24px)';
+
   return (
-    <section className={className}>
-      {/* VIEWPORT */}
+    <section
+      className={className}
+      // Full-bleed hack: šírka na 100vw a centrovanie cez translateX,
+      // aby sme prekonali padding rodiča na mobile,
+      // ale zároveň na desktope limitneme vnútro maxWidth-om.
+      style={{
+        width: '100vw',
+        position: 'relative',
+        left: '50%',
+        transform: 'translateX(-50%)',
+      }}
+    >
+      {/* CONTAINER – drží vnútorný padding a maxWidth na desktope */}
       <div
-        ref={wrapRef}
         style={{
-          position: 'relative',
-          width: '100%',
-          overflow: 'hidden',
-          borderRadius: '8px',
-          background: 'rgba(0,0,0,0.05)',
-          maxWidth: '960px',     // desktop max šírka
-          margin: '0 auto',      // centrovanie na PC
+          paddingLeft: PAD_INLINE,
+          paddingRight: PAD_INLINE,
+          margin: '0 auto',
+          maxWidth: '1000px', // desktop limit a centrovanie
+          boxSizing: 'border-box',
         }}
       >
-        {/* TRACK */}
+        {/* VIEWPORT */}
         <div
+          ref={wrapRef}
           style={{
-            display: 'flex',
-            touchAction: 'pan-y',
-            userSelect: 'none',
-            transform: `translate3d(${tx}%, 0, 0)`,
-            transition: dragging ? 'none' : 'transform 300ms ease',
-            willChange: 'transform',
+            position: 'relative',
+            width: '100%',
+            overflow: 'hidden',
+            borderRadius: `${radius}px`,
+            background: 'rgba(0,0,0,0.05)',
           }}
-          onPointerDown={begin}
-          onPointerMove={move}
-          onPointerUp={end}
-          onPointerCancel={end}
-          onPointerLeave={end}
-          aria-label="carousel-track"
         >
-          {images.map((src, i) => (
-            <div
-              key={i}
-              style={{ position: 'relative', flex: '0 0 100%', overflow: 'hidden' }}
-            >
-              {/* ratio-box podľa pomeru */}
-              <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
-              <div style={{ position: 'absolute', inset: 0 }}>
-                <Image
-                  src={src}
-                  alt={`slide-${i + 1}`}
-                  fill
-                  style={{
-                    objectFit: 'cover',
-                    display: 'block',
-                    userSelect: 'none',
-                  }}
-                  priority={i === 0}
-                  fetchPriority={i === 0 ? 'high' : 'auto'}
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 800px, 960px"
-                  quality={75}
-                  draggable={false}
-                />
+          {/* TRACK */}
+          <div
+            style={{
+              display: 'flex',
+              touchAction: 'pan-y',
+              userSelect: 'none',
+              transform: `translate3d(${tx}%, 0, 0)`,
+              transition: dragging ? 'none' : 'transform 300ms ease',
+              willChange: 'transform',
+            }}
+            onPointerDown={begin}
+            onPointerMove={move}
+            onPointerUp={end}
+            onPointerCancel={end}
+            onPointerLeave={end}
+            aria-label="carousel-track"
+          >
+            {images.map((src, i) => (
+              <div key={i} style={{ position: 'relative', flex: '0 0 100%', overflow: 'hidden' }}>
+                {/* ratio-box podľa pomeru (držanie výšky) */}
+                <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
+                <div style={{ position: 'absolute', inset: 0 }}>
+                  <Image
+                    src={src}
+                    alt={`slide-${i + 1}`}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 1000px"
+                    // prvý slide načítaj čo najskôr, zvyšok lazy
+                    priority={i === 0}
+                    loading={i === 0 ? 'eager' : 'lazy'}
+                    placeholder="empty"
+                    style={{ objectFit: 'cover' }}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </section>
