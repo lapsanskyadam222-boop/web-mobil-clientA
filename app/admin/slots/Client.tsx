@@ -1,344 +1,249 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import * as React from 'react';
 
 type Slot = {
   id: string;
-  date: string;   // YYYY-MM-DD
-  time: string;   // HH:MM
-  locked?: boolean;
-  booked_count?: number;
-  capacity?: number;
+  date: string;      // "YYYY-MM-DD"
+  time: string;      // "HH:mm"
+  capacity: number;
+  bookedCount: number;
 };
 
-function toYMD(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-function fmtDateLabel(d: Date) {
-  return d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
-}
+type CalendarProps = {
+  className?: string;
+  selectedDate?: string;
+  onDateChange?: (isoDate: string) => void;
+};
 
-/** Kalendár: iba týždne, ktoré obsahujú aspoň 1 deň z daného mesiaca */
-function buildMonthWeeks(monthAnchor: Date): Date[][] {
-  const first = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
-  const startOffset = (first.getDay() + 6) % 7; // Po=0..Ne=6
-  const start = new Date(first);
-  start.setDate(first.getDate() - startOffset);
+type Props = {
+  slots?: Slot[];
+  CalendarComponent?: React.ComponentType<CalendarProps>;
+  onSetCapacity?: (slotId: string, capacity: number) => Promise<void> | void;
+  onAddTime?: (dateISO?: string) => Promise<void> | void;
+  onQuickFill?: (dateISO?: string) => Promise<void> | void;
+  onClearDay?: (dateISO?: string) => Promise<void> | void;
+  onResetAll?: () => Promise<void> | void;
+};
 
-  const inMonth = (d: Date) => d.getMonth() === monthAnchor.getMonth();
-  const weeks: Date[][] = [];
-  let cur = new Date(start);
+export default function Client({
+  slots = [],
+  CalendarComponent,
+  onSetCapacity,
+  onAddTime,
+  onQuickFill,
+  onClearDay,
+  onResetAll,
+}: Props) {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const firstWithData = slots[0]?.date ?? todayISO;
+  const [selectedDate, setSelectedDate] = React.useState<string>(firstWithData);
+  const [editing, setEditing] = React.useState<{ id: string; value: string } | null>(null);
 
-  while (true) {
-    const week: Date[] = [];
-    for (let i = 0; i < 7; i++) {
-      week.push(new Date(cur));
-      cur.setDate(cur.getDate() + 1);
+  React.useEffect(() => {
+    if (!slots.some((s) => s.date === selectedDate)) {
+      setSelectedDate(slots[0]?.date ?? todayISO);
     }
-    if (!week.some(inMonth)) break;
-    weeks.push(week);
-  }
-  return weeks;
-}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slots]);
 
-export default function AdminSlotsClient() {
-  const [slots, setSlots] = useState<Slot[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [selectedDate, setSelectedDate] = useState<string>(toYMD(new Date()));
-
-  const [time, setTime] = useState('');
-  const [cap, setCap] = useState(1);
-  const [batchTimes, setBatchTimes] = useState<string[]>([]);
-
-  const [calMonth, setCalMonth] = useState<Date>(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const monthLabel = useMemo(
-    () => calMonth.toLocaleDateString('sk-SK', { month: 'long', year: 'numeric' }),
-    [calMonth]
-  );
-  const weeks = useMemo(() => buildMonthWeeks(calMonth), [calMonth]);
-
-  async function loadSlots() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/slots?t=${Date.now()}`, { cache: 'no-store' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || 'Nepodarilo sa načítať sloty.');
-      setSlots(Array.isArray(json.slots) ? json.slots : []);
-    } catch (e:any) {
-      setError(e?.message || 'Chyba pri načítaní slotov.');
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => { loadSlots(); }, []);
-  const flashSaved = () => { setSaved(true); setTimeout(()=>setSaved(false), 900); };
-
-  function sortByDateTime(a: Slot, b: Slot) {
-    const da = `${a.date}T${a.time}`, db = `${b.date}T${b.time}`;
-    return da < db ? -1 : da > db ? 1 : 0;
-  }
-  const selectedSlots = useMemo(
-    () => slots.filter(s => s.date === selectedDate).sort((a,b)=>a.time<b.time?-1:1),
+  const daySlots = React.useMemo(
+    () => slots.filter((s) => s.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time)),
     [slots, selectedDate]
   );
-  const daysWithSlots = useMemo(() => new Set(slots.map(s => s.date)), [slots]);
 
-  async function postCreate(date: string, time: string, capacity: number) {
-    const res = await fetch('/api/slots', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ date, time, capacity }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json?.error || 'Uloženie zlyhalo.');
-    return json as { created?: Slot[] };
-  }
-  async function patchAction(id: string, action: 'lock'|'unlock'|'delete'|'free'|'capacity', more?: any) {
-    const res = await fetch('/api/slots', {
-      method: 'PATCH',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ id, action, ...more }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json?.error || 'Operácia zlyhala.');
-    return json;
-  }
-
-  async function addOne() {
-    if (!selectedDate || !time) return alert('Vyber dátum aj čas.');
-    setBusy(true);
-    try {
-      const out = await postCreate(selectedDate, time, Math.max(1, +cap || 1));
-      if (out.created?.length) {
-        setSlots(prev => [...prev, ...out.created!].sort(sortByDateTime));
-      } else {
-        await loadSlots();
-      }
-      setTime('');
-      flashSaved();
-    } catch (e:any) {
-      alert(e?.message || 'Pridanie zlyhalo.');
-    } finally { setBusy(false); }
-  }
-  function addTimeToBatch(){
-    if (!time) return;
-    if (!/^\d{2}:\d{2}$/.test(time)) return alert('Čas musí byť HH:MM');
-    if (!batchTimes.includes(time)) setBatchTimes(prev => [...prev, time].sort());
-    setTime('');
-  }
-  function removeTimeFromBatch(t:string){ setBatchTimes(prev => prev.filter(x=>x!==t)); }
-  async function submitBatch(){
-    if (batchTimes.length===0) return alert('Pridaj aspoň jeden čas.');
-    setBusy(true);
-    try{
-      for (const t of batchTimes) await postCreate(selectedDate, t, Math.max(1, +cap || 1));
-      await loadSlots();
-      setBatchTimes([]);
-      flashSaved();
-    } catch(e:any){
-      alert(e?.message || 'Hromadné pridanie zlyhalo.');
-    } finally{ setBusy(false); }
-  }
-
-  async function lock(id:string){ setBusy(true); try{ await patchAction(id,'lock'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Zamknutie zlyhalo.'); } finally{ setBusy(false);} }
-  async function unlock(id:string){ setBusy(true); try{ await patchAction(id,'unlock'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Odomknutie zlyhalo.'); } finally{ setBusy(false);} }
-  async function del(id:string){ if(!confirm('Vymazať slot?'))return; setBusy(true); try{ await patchAction(id,'delete'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Vymazanie zlyhalo.'); } finally{ setBusy(false);} }
-  async function free(id:string){ if(!confirm('Obnoviť (zmazať rezervácie a uvoľniť)?'))return; setBusy(true); try{ await patchAction(id,'free'); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Obnovenie zlyhalo.'); } finally{ setBusy(false);} }
-  async function changeCap(id:string, v:number){ setBusy(true); try{ await patchAction(id,'capacity',{ capacity:Math.max(1, +v||1) }); await loadSlots(); flashSaved(); } catch(e:any){ alert(e?.message||'Zmena kapacity zlyhala.'); } finally{ setBusy(false);} }
-
-  if (loading) return <main className="p-6">Načítavam…</main>;
+  const handleCapacityCommit = async (slot: Slot, raw: string) => {
+    const num = Number(raw);
+    setEditing(null);
+    if (!Number.isNaN(num) && num !== slot.capacity) {
+      await onSetCapacity?.(slot.id, num);
+    }
+  };
 
   return (
-    <main className="mx-auto max-w-3xl w-full p-4 sm:p-6 space-y-6 overflow-x-hidden">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Správa slotov</h1>
-        {saved && <span className="text-sm text-green-600">Uložené ✓</span>}
-      </div>
-
+    <div className="w-full max-w-full min-w-0 px-3 md:px-4 lg:px-6 space-y-4 overflow-x-hidden">
       {/* KALENDÁR */}
-      <section className="rounded-2xl border p-3 sm:p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <button
-            className="rounded border px-3 py-1"
-            onClick={()=>setCalMonth(m=>new Date(m.getFullYear(), m.getMonth()-1, 1))}
-            aria-label="Predošlý mesiac"
-          >‹</button>
-          <div className="font-medium">{monthLabel}</div>
-          <button
-            className="rounded border px-3 py-1"
-            onClick={()=>setCalMonth(m=>new Date(m.getFullYear(), m.getMonth()+1, 1))}
-            aria-label="Ďalší mesiac"
-          >›</button>
-        </div>
+      <section className="w-full max-w-full min-w-0 overflow-x-hidden">
+        {CalendarComponent ? (
+          <CalendarComponent
+            className="w-full"
+            selectedDate={selectedDate}
+            onDateChange={(d) => d && setSelectedDate(d)}
+          />
+        ) : (
+          <div className="w-full border rounded-xl p-3 flex items-center gap-3">
+            <span className="text-sm text-gray-600">Vybrať deň:</span>
+            <input
+              type="date"
+              className="border rounded-md px-2 py-1"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
+          </div>
+        )}
+      </section>
 
-        {/* hlavička dní */}
-        <div
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}
-          className="text-center text-xs opacity-70"
-        >
-          <div>po</div><div>ut</div><div>st</div><div>št</div><div>pia</div><div>so</div><div>ne</div>
-        </div>
-
-        {/* týždne */}
-        <div className="space-y-2">
-          {weeks.map((week, wi) => (
-            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}>
-              {week.map((d, di) => {
-                const id = toYMD(d);
-                const inMonth = d.getMonth() === calMonth.getMonth();
-                const isSelected = id === selectedDate;
-                const isToday = id === toYMD(new Date());
-                const hasAny = daysWithSlots.has(id);
-                return (
-                  <button
-                    key={di}
-                    onClick={()=>setSelectedDate(id)}
-                    title={fmtDateLabel(d)}
-                    className={[
-                      'rounded border text-sm w-full min-h-10',
-                      inMonth ? 'bg-white' : 'bg-gray-50 opacity-60',
-                      isSelected ? 'bg-black text-white border-black' : '',
-                      isToday && !isSelected ? 'ring-1 ring-black/50' : '',
-                    ].join(' ')}
-                  >
-                    <span className="inline-flex items-center justify-center gap-1">
-                      {d.getDate()}
-                      {hasAny && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+      {/* PANEL S NASTAVENIAMI – flex-wrap, bez overflow mimo panelu */}
+      <section className="w-full max-w-full min-w-0">
+        <div className="w-full max-w-full min-w-0">
+          <div className="flex flex-wrap items-center gap-2 py-2">
+            <button
+              onClick={() => onAddTime?.(selectedDate)}
+              className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 whitespace-nowrap"
+            >
+              Pridať čas
+            </button>
+            <button
+              onClick={() => onQuickFill?.(selectedDate)}
+              className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 whitespace-nowrap"
+            >
+              Rýchle doplnenie
+            </button>
+            <button
+              onClick={() => onClearDay?.(selectedDate)}
+              className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 whitespace-nowrap"
+            >
+              Vyčistiť deň
+            </button>
+            <button
+              onClick={() => onResetAll?.()}
+              className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 whitespace-nowrap"
+            >
+              Resetovať všetko
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* PANEL PRE VYBRANÝ DEŇ */}
-      <section className="rounded-2xl p-3 sm:p-4 space-y-3">
-        <div className="text-sm opacity-70">Vybraný deň:</div>
-        <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
-
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="block">
-            <span className="block text-xs mb-1">Čas</span>
-            <input type="time" value={time} onChange={e=>setTime(e.target.value)} className="border rounded px-3 py-2" disabled={busy}/>
-          </label>
-          <label className="block">
-            <span className="block text-xs mb-1">Kapacita</span>
-            <input
-              type="number"
-              min={1}
-              value={cap}
-              onChange={e=>setCap(Math.max(1, +e.target.value||1))}
-              className="border rounded px-2 py-2 w-14 sm:w-20"  // užší input
-              disabled={busy}
-            />
-          </label>
-          <button onClick={addOne} className="rounded bg-black text-white px-3 sm:px-4 py-2 text-xs sm:text-sm disabled:opacity-50" disabled={busy || !time}>
-            Pridať 1
-          </button>
-          <button onClick={addTimeToBatch} className="rounded border px-3 py-2 text-xs sm:text-sm disabled:opacity-50" disabled={busy || !time}>
-            Pridať do zoznamu
-          </button>
-          <button onClick={submitBatch} className="rounded bg-black text-white px-3 sm:px-4 py-2 text-xs sm:text-sm disabled:opacity-50" disabled={busy || batchTimes.length===0}>
-            Pridať všetky ({batchTimes.length})
-          </button>
-        </div>
-
-        {batchTimes.length>0 && (
-          <div className="flex flex-wrap gap-2">
-            {batchTimes.map(t=>(
-              <span key={t} className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
-                {t}
-                <button onClick={()=>removeTimeFromBatch(t)} className="text-gray-500 hover:text-black">×</button>
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full table-fixed text-xs sm:text-sm">
-            {/* užšie percentá – Kapacita dostala len ~18 % na mobile */}
-            <colgroup>
-              <col className="w-[28%] sm:w-[22%]" />   {/* Čas */}
-              <col className="w-[18%] sm:w-[18%]" />   {/* Kapacita – veľmi úzka */}
-              <col className="w-[16%] sm:w-[18%]" />   {/* Stav */}
-              <col className="w-[38%] sm:w-[42%]" />   {/* Akcie */}
-            </colgroup>
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border px-2 py-1 text-left">Čas</th>
-                <th className="border px-1 py-1 text-left whitespace-nowrap">Kapacita</th>
-                <th className="border px-2 py-1 text-left">Stav</th>
-                <th className="border px-2 py-1 text-right">Akcie</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectedSlots.length===0 && (
-                <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-500">Žiadne sloty pre tento deň.</td></tr>
-              )}
-
-              {selectedSlots.map(s=>(
-                <tr key={s.id}>
-                  <td className="border px-2 py-1">{s.time}</td>
-                  <td className="border px-2 py-1">
-                    <div className="flex items-center gap-2 min-w-0">
+      {/* DESKTOP TABUĽKA (≥640px) */}
+      <section className="hidden sm:block w-full max-w-full min-w-0">
+        <table className="w-full table-fixed border-separate border-spacing-0">
+          <thead>
+            <tr className="text-left text-sm text-gray-600">
+              <th className="px-3 py-2 w-[120px]">Dátum</th>
+              <th className="px-3 py-2 w-[110px]">Čas</th>
+              <th className="px-3 py-2 w-[64px] text-center">Kapacita</th>
+              <th className="px-3 py-2 w-[90px] text-center">Obsadené</th>
+              <th className="px-3 py-2">Akcia</th>
+            </tr>
+          </thead>
+          <tbody className="text-sm">
+            {daySlots.map((s) => {
+              const isEditing = editing?.id === s.id;
+              return (
+                <tr key={s.id} className="border-t">
+                  <td className="px-3 py-2 align-middle break-words">{s.date}</td>
+                  <td className="px-3 py-2 align-middle">{s.time}</td>
+                  <td className="px-2 py-2 align-middle text-center w-[64px]">
+                    {isEditing ? (
                       <input
-                        type="number"
-                        min={1}
-                        value={s.capacity ?? 1}
-                        onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-2 py-1 w-10 sm:w-16"  // ešte užšie v riadkoch
-                        disabled={busy}
+                        autoFocus
+                        className="w-[56px] text-center border rounded-md px-1 py-1"
+                        value={editing!.value}
+                        inputMode="numeric"
+                        onChange={(e) =>
+                          setEditing({ id: s.id, value: e.target.value.replace(/\D/g, '') })
+                        }
+                        onBlur={() => handleCapacityCommit(s, editing!.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === 'Escape') {
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
                       />
-                      <span className="hidden sm:inline text-xs opacity-60 whitespace-nowrap">
-                        ({s.booked_count ?? 0} / {s.capacity ?? 1})
-                      </span>
-                    </div>
-                  </td>
-                  <td className="border px-2 py-1">
-                    <div className="flex items-center gap-1">
-                      <span className={`inline-block rounded px-2 py-0.5 text-xs ${ (s.booked_count??0) > 0 ? 'bg-gray-900 text-white' : 'bg-gray-200'}`}>
-                        {(s.booked_count??0) > 0 ? 'Rezervované' : 'Voľné'}
-                      </span>
-                      {s.locked && <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">Zamknuté</span>}
-                    </div>
-                  </td>
-                  <td className="border px-2 py-1">
-                    <div className="flex flex-wrap sm:flex-nowrap justify-end gap-1 sm:gap-2">
-                      {!s.locked ? (
-                        <button onClick={()=>lock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100 text-xs sm:text-sm">
-                          Zamknúť
-                        </button>
-                      ) : (
-                        <button onClick={()=>unlock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100 text-xs sm:text-sm">
-                          Odomknúť
-                        </button>
-                      )}
-                      <button onClick={()=>del(s.id)} disabled={busy} className="px-2 py-1 border rounded text-red-600 hover:bg-gray-100 text-xs sm:text-sm">
-                        Vymazať
+                    ) : (
+                      <button
+                        className="inline-flex items-center justify-center w-[56px] h-[32px] rounded-md border hover:bg-gray-50"
+                        onClick={() => setEditing({ id: s.id, value: String(s.capacity) })}
+                        title="Upraviť kapacitu"
+                      >
+                        {s.capacity}
                       </button>
-                      <button onClick={()=>free(s.id)} disabled={busy} className="px-2 py-1 rounded bg-black text-white hover:brightness-110 text-xs sm:text-sm">
-                        Obnoviť
+                    )}
+                  </td>
+                  <td className="px-2 py-2 align-middle text-center">{s.bookedCount}</td>
+                  <td className="px-3 py-2 align-middle">
+                    <div className="flex flex-wrap gap-2">
+                      <button className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50" disabled>
+                        -1
                       </button>
+                      <button className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50" disabled>
+                        +1
+                      </button>
+                      {/* ďalšie akcie sem */}
                     </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {error && <p className="text-red-600">{error}</p>}
+              );
+            })}
+            {daySlots.length === 0 && (
+              <tr>
+                <td className="px-3 py-6 text-gray-500" colSpan={5}>
+                  Pre {selectedDate} nie sú žiadne sloty.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </section>
-    </main>
+
+      {/* MOBILNÝ LIST VIEW (<640px) – žiadne horizontálne scrollovanie */}
+      <section className="sm:hidden w-full max-w-full min-w-0 space-y-2">
+        {daySlots.length === 0 && (
+          <div className="text-sm text-gray-500 px-1">Pre {selectedDate} nie sú žiadne sloty.</div>
+        )}
+        {daySlots.map((s) => {
+          const isEditing = editing?.id === s.id;
+          return (
+            <div key={s.id} className="rounded-xl border p-3">
+              <div className="text-sm font-medium">{s.date}</div>
+              <div className="mt-1 flex items-center justify-between">
+                <div className="text-base font-semibold">{s.time}</div>
+                <div className="text-xs text-gray-500">Obsadené: {s.bookedCount}</div>
+              </div>
+
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm">Kapacita:</span>
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    className="w-[64px] text-center border rounded-md px-1 py-1"
+                    value={editing!.value}
+                    inputMode="numeric"
+                    onChange={(e) =>
+                      setEditing({ id: s.id, value: e.target.value.replace(/\D/g, '') })
+                    }
+                    onBlur={() => handleCapacityCommit(s, editing!.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === 'Escape') {
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="inline-flex items-center justify-center w-[64px] h-[34px] rounded-md border hover:bg-gray-50"
+                    onClick={() => setEditing({ id: s.id, value: String(s.capacity) })}
+                    title="Upraviť kapacitu"
+                  >
+                    {s.capacity}
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50" disabled>
+                  -1
+                </button>
+                <button className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50" disabled>
+                  +1
+                </button>
+                {/* ďalšie akcie sem */}
+              </div>
+            </div>
+          );
+        })}
+      </section>
+    </div>
   );
 }
