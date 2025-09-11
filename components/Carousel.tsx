@@ -4,13 +4,13 @@ import * as React from 'react';
 
 type CarouselProps = {
   images: string[];
-  /** Pomer strán, napr. "4/5", "1/1", "16/9". Default: "4/5". */
+  /** Pomer strán – napr. "4/5", "1/1", "16/9". */
   aspect?: string;
-  /** Jemný rádius (px). Default: 6. */
+  /** Jemný rádius rohov v px (default 6). */
   edgeRadius?: number;
-  /** Max. šírka na desktope (px). Default: 720. */
+  /** Max. šírka na desktope (px) — desktop bude vždy centrovaný. */
   desktopMaxWidth?: number;
-  /** Vnútorný “gutter” na mobile (px). Default: 8. */
+  /** Mobilný vnútorný “gutter” v px (default 8). */
   mobilePadding?: number;
   className?: string;
 };
@@ -18,22 +18,8 @@ type CarouselProps = {
 function aspectToPaddingPercent(aspect?: string) {
   const raw = (aspect ?? '4/5').replace(/\s/g, '');
   const [w, h] = raw.split('/').map(Number);
-  if (!w || !h) return 125; // fallback 4/5
+  if (!w || !h) return 125; // fallback = 4/5
   return (h / w) * 100;
-}
-
-/** jednoduchý hook: šírka okna < breakpoint? */
-function useIsNarrow(breakpoint = 1024) {
-  const [narrow, setNarrow] = React.useState<boolean>(() =>
-    typeof window === 'undefined' ? true : window.innerWidth < breakpoint
-  );
-  React.useEffect(() => {
-    const onResize = () => setNarrow(window.innerWidth < breakpoint);
-    onResize();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [breakpoint]);
-  return narrow;
 }
 
 export default function Carousel({
@@ -41,10 +27,9 @@ export default function Carousel({
   aspect = '4/5',
   edgeRadius = 6,
   desktopMaxWidth = 720,
-  mobilePadding = 8, // užší okraj na mobile
+  mobilePadding = 8,
   className = '',
 }: CarouselProps) {
-  const isNarrow = useIsNarrow(1024);
   const total = Array.isArray(images) ? images.length : 0;
   const [index, setIndex] = React.useState(0);
   const [dragX, setDragX] = React.useState(0);
@@ -53,14 +38,11 @@ export default function Carousel({
   const startX = React.useRef(0);
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const widthRef = React.useRef(1);
-  const lockRef = React.useRef<'x' | 'y' | null>(null);
 
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const measure = () => {
-      widthRef.current = Math.max(1, el.clientWidth || 1);
-    };
+    const measure = () => (widthRef.current = Math.max(1, el.clientWidth || 1));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -70,24 +52,16 @@ export default function Carousel({
   const begin = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
-    lockRef.current = null;
     setDragging(true);
     setDragX(0);
   };
-
   const move = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
-    if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return;
-      lockRef.current = 'x';
-    }
-    if (lockRef.current === 'x') {
-      e.preventDefault();
-      setDragX(dx);
-    }
+    if (Math.abs(dx) < 6) return;
+    e.preventDefault();
+    setDragX(dx);
   };
-
   const end = () => {
     if (!dragging) return;
     const delta = dragX / Math.max(1, widthRef.current);
@@ -97,7 +71,6 @@ export default function Carousel({
     setIndex(next);
     setDragX(0);
     setDragging(false);
-    lockRef.current = null;
   };
 
   if (!total) return null;
@@ -105,51 +78,16 @@ export default function Carousel({
   const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
   const padTop = aspectToPaddingPercent(aspect);
 
-  /** Vonkajší wrapper:
-   * - MOBILE (isNarrow): full-bleed cez celé viewport šírky, zruší padding rodiča
-   *   pomocou negatívnych marginov; ponechá len malý vnútorný padding (mobilePadding).
-   * - DESKTOP: vycentrovaná “karta” s maxWidth.
-   */
-  const outerStyle: React.CSSProperties = isNarrow
-    ? {
-        width: '100vw',
-        maxWidth: 'none',
-        marginLeft: 'calc(50% - 50vw)',
-        marginRight: 'calc(50% - 50vw)',
-        paddingLeft: `${mobilePadding}px`,
-        paddingRight: `${mobilePadding}px`,
-      }
-    : {
-        width: '100%',
-        maxWidth: `${desktopMaxWidth}px`,
-        margin: '0 auto',
-        paddingLeft: 0,
-        paddingRight: 0,
-      };
-
-  const viewportStyle: React.CSSProperties = {
-    position: 'relative',
-    width: '100%',
-    overflow: 'hidden',
-    borderRadius: `${edgeRadius}px`,
-    background: 'rgba(0,0,0,0.05)',
-  };
-
-  const trackStyle: React.CSSProperties = {
-    display: 'flex',
-    touchAction: 'pan-y',
-    userSelect: 'none',
-    transform: `translate3d(${tx}%, 0, 0)`,
-    transition: dragging ? 'none' : 'transform 300ms ease',
-    willChange: 'transform',
-  };
-
   return (
     <section className={className}>
-      <div style={outerStyle}>
-        <div ref={wrapRef} style={viewportStyle}>
+      {/* OUTER: desktop = centrovaný s maxWidth; mobile = full-bleed cez media query */}
+      <div className="carousel-outer" style={{ ['--maxw' as any]: `${desktopMaxWidth}px`, ['--mpad' as any]: `${mobilePadding}px` }}>
+        {/* VIEWPORT */}
+        <div ref={wrapRef} className="carousel-viewport" style={{ borderRadius: `${edgeRadius}px` }}>
+          {/* TRACK */}
           <div
-            style={trackStyle}
+            className="carousel-track"
+            style={{ transform: `translate3d(${tx}%,0,0)`, transition: dragging ? 'none' : 'transform 300ms ease' }}
             onPointerDown={begin}
             onPointerMove={move}
             onPointerUp={end}
@@ -158,14 +96,13 @@ export default function Carousel({
             aria-label="carousel-track"
           >
             {images.map((src, i) => (
-              <div key={i} style={{ position: 'relative', flex: '0 0 100%', overflow: 'hidden' }}>
-                <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
-                <div style={{ position: 'absolute', inset: 0 }}>
+              <div key={i} className="slide">
+                <div className="ratio" style={{ paddingTop: `${padTop}%` }} aria-hidden="true" />
+                <div className="imgwrap">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={src}
                     alt={`slide-${i + 1}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     draggable={false}
                     loading={i === 0 ? 'eager' : 'lazy'}
                   />
@@ -175,6 +112,47 @@ export default function Carousel({
           </div>
         </div>
       </div>
+
+      {/* styled-jsx: čisto CSS break-point, žiadna JS logika */}
+      <style jsx>{`
+        .carousel-outer {
+          width: 100%;
+          max-width: var(--maxw);
+          margin: 0 auto; /* desktop centrovaný */
+        }
+        .carousel-viewport {
+          position: relative;
+          width: 100%;
+          overflow: hidden;
+          background: rgba(0,0,0,0.05);
+        }
+        .carousel-track {
+          display: flex;
+          touch-action: pan-y;
+          user-select: none;
+          will-change: transform;
+        }
+        .slide {
+          position: relative;
+          flex: 0 0 100%;
+          overflow: hidden;
+        }
+        .ratio { width: 100%; }
+        .imgwrap { position: absolute; inset: 0; }
+        .imgwrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+        /* MOBILE (<=1023px): full-bleed + úzky vnútorný gutter */
+        @media (max-width: 1023px) {
+          .carousel-outer {
+            width: 100vw;
+            max-width: none;
+            margin-left: calc(50% - 50vw);
+            margin-right: calc(50% - 50vw);
+            padding-left: var(--mpad);
+            padding-right: var(--mpad);
+          }
+        }
+      `}</style>
     </section>
   );
 }
