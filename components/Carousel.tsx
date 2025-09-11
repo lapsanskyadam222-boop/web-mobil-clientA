@@ -9,6 +9,8 @@ type Props = {
   aspect?: string;
   /** Jemný rádius v px (default 6). */
   radius?: number;
+  /** Max šírka na desktope (default 720px – približne šírka textu). */
+  desktopMaxWidth?: number;
   /** Dodatočné className pre obal sekcie (nepovinné). */
   className?: string;
 };
@@ -23,7 +25,8 @@ function aspectToPaddingPercent(aspect?: string) {
 export default function Carousel({
   images,
   aspect = '4/5',
-  radius = 6, // menší, takmer neviditeľný
+  radius = 6,
+  desktopMaxWidth = 720,            // <— nový parameter
   className = '',
 }: Props) {
   const total = Array.isArray(images) ? images.length : 0;
@@ -36,7 +39,6 @@ export default function Carousel({
   const widthRef = React.useRef(1);
   const lockRef = React.useRef<'x' | 'y' | null>(null);
 
-  // zmeraj šírku viewportu (na prepočet ťahania v %)
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -60,7 +62,7 @@ export default function Carousel({
     const dx = e.clientX - startX.current;
 
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return; // neblokuj vertikálny scroll pri malom pohybe
+      if (Math.abs(dx) < 6) return;
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -73,7 +75,6 @@ export default function Carousel({
     if (!dragging) return;
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
-    // prah = 1/4 šírky
     if (delta <= -0.25 && index < total - 1) next = index + 1;
     if (delta >=  0.25 && index > 0)        next = index - 1;
     setIndex(next);
@@ -87,15 +88,12 @@ export default function Carousel({
 
   if (!total) return null;
 
-  // univerzálny vnútorný padding okolo carouselu (užší na mobile)
-  const PAD_INLINE = 'clamp(8px, 3vw, 24px)';
+  // úzky vnútorný okraj; na mobile ~8 px, na väčších obrazovkách môže byť mierne väčší
+  const PAD_INLINE = 'clamp(8px, 3vw, 20px)';
 
   return (
     <section
       className={className}
-      // Full-bleed hack: šírka na 100vw a centrovanie cez translateX,
-      // aby sme prekonali padding rodiča na mobile,
-      // ale zároveň na desktope limitneme vnútro maxWidth-om.
       style={{
         width: '100vw',
         position: 'relative',
@@ -103,13 +101,13 @@ export default function Carousel({
         transform: 'translateX(-50%)',
       }}
     >
-      {/* CONTAINER – drží vnútorný padding a maxWidth na desktope */}
+      {/* CONTAINER – zmenšené maximum na desktope, centrované */}
       <div
         style={{
           paddingLeft: PAD_INLINE,
           paddingRight: PAD_INLINE,
           margin: '0 auto',
-          maxWidth: '1000px', // desktop limit a centrovanie
+          maxWidth: `${desktopMaxWidth}px`, // <— menšie maximum na desktope
           boxSizing: 'border-box',
         }}
       >
@@ -122,6 +120,7 @@ export default function Carousel({
             overflow: 'hidden',
             borderRadius: `${radius}px`,
             background: 'rgba(0,0,0,0.05)',
+            cursor: dragging ? 'grabbing' : 'grab', // vizuálna indikácia ťahania
           }}
         >
           {/* TRACK */}
@@ -143,15 +142,13 @@ export default function Carousel({
           >
             {images.map((src, i) => (
               <div key={i} style={{ position: 'relative', flex: '0 0 100%', overflow: 'hidden' }}>
-                {/* ratio-box podľa pomeru (držanie výšky) */}
                 <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
                 <div style={{ position: 'absolute', inset: 0 }}>
                   <Image
                     src={src}
                     alt={`slide-${i + 1}`}
                     fill
-                    sizes="(max-width: 768px) 100vw, 1000px"
-                    // prvý slide načítaj čo najskôr, zvyšok lazy
+                    sizes="(max-width: 768px) 100vw, 720px"
                     priority={i === 0}
                     loading={i === 0 ? 'eager' : 'lazy'}
                     placeholder="empty"
