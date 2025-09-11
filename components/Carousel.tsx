@@ -8,6 +8,8 @@ type Props = {
   aspect?: string;
   /** Dodatočné className pre obal sekcie (nepovinné). */
   className?: string;
+  /** Jemný rádius rohova (px). Default 4. */
+  radius?: number;
 };
 
 function aspectToPaddingPercent(aspect?: string) {
@@ -21,6 +23,7 @@ export default function Carousel({
   images,
   aspect = '4/5',
   className = '',
+  radius = 4, // jemný, takmer rovný roh
 }: Props) {
   const total = Array.isArray(images) ? images.length : 0;
   const [index, setIndex] = React.useState(0);
@@ -83,17 +86,19 @@ export default function Carousel({
 
   if (!total) return null;
 
+  const radiusPx = `${Math.max(0, radius)}px`;
+
   return (
     <section className={className}>
       {/* VIEWPORT */}
       <div
         ref={wrapRef}
-        // overflow hidden + pekné zaoblenie a jemné pozadie
+        // overflow hidden + jemné zaoblenie a nevtieravé pozadie
         style={{
           position: 'relative',
           width: '100%',
           overflow: 'hidden',
-          borderRadius: '16px',
+          borderRadius: radiusPx,     // << jemný rádius
           background: 'rgba(0,0,0,0.05)',
         }}
       >
@@ -115,7 +120,15 @@ export default function Carousel({
           aria-label="carousel-track"
         >
           {images.map((src, i) => (
-            <div key={i} style={{ position: 'relative', flex: '0 0 100%', overflow: 'hidden' }}>
+            <div
+              key={i}
+              style={{
+                position: 'relative',
+                flex: '0 0 100%',
+                overflow: 'hidden',
+                borderRadius: radiusPx, // << zhodný rádius aj na slidoch (bez presahov)
+              }}
+            >
               {/* ratio-box podľa pomeru (držanie výšky) */}
               <div style={{ width: '100%', paddingTop: `${padTop}%` }} aria-hidden="true" />
               <div style={{ position: 'absolute', inset: 0 }}>
@@ -123,7 +136,12 @@ export default function Carousel({
                 <img
                   src={src}
                   alt={`slide-${i + 1}`}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
                   draggable={false}
                   loading={i === 0 ? 'eager' : 'lazy'}
                 />
