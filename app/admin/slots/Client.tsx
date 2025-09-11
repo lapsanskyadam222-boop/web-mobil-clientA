@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Slot = {
   id: string;
@@ -44,6 +44,25 @@ function buildMonthWeeks(monthAnchor: Date): Date[][] {
   return weeks;
 }
 
+/** Zmeria šírku elementu (ResizeObserver) */
+function useMeasuredWidth<T extends HTMLElement>(): [React.RefObject<T>, number | null] {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect?.width;
+      if (typeof width === 'number') setW(Math.round(width));
+    });
+    ro.observe(ref.current);
+    // inicializácia
+    setW(ref.current.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
+
 export default function AdminSlotsClient() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +82,9 @@ export default function AdminSlotsClient() {
     [calMonth]
   );
   const weeks = useMemo(() => buildMonthWeeks(calMonth), [calMonth]);
+
+  // ▶️ NOVÉ: meriame šírku kalendára
+  const [calendarRef, calendarWidth] = useMeasuredWidth<HTMLDivElement>();
 
   async function loadSlots() {
     setLoading(true);
@@ -156,15 +178,18 @@ export default function AdminSlotsClient() {
 
   if (loading) return <main className="p-6">Načítavam…</main>;
 
+  // štýl, ktorý použijeme na panel pod kalendárom
+  const panelStyle = calendarWidth ? { maxWidth: `${calendarWidth}px` } : undefined;
+
   return (
-    <main className="mx-auto max-w-3xl w-full p-4 sm:p-6 space-y-6 overflow-x-hidden min-w-0">
+    <main className="mx-auto w-full p-4 sm:p-6 space-y-6 overflow-x-hidden min-w-0">
       <div className="flex items-center justify-between min-w-0">
         <h1 className="text-2xl font-semibold">Správa slotov</h1>
         {saved && <span className="text-sm text-green-600">Uložené ✓</span>}
       </div>
 
-      {/* KALENDÁR */}
-      <section className="rounded-2xl border p-3 sm:p-4 min-w-0">
+      {/* KALENDÁR (meraný kontajner) */}
+      <section ref={calendarRef} className="rounded-2xl border p-3 sm:p-4 min-w-0 mx-auto">
         <div className="mb-3 flex items-center justify-between min-w-0">
           <button
             className="rounded border px-3 py-1"
@@ -221,8 +246,8 @@ export default function AdminSlotsClient() {
         </div>
       </section>
 
-      {/* PANEL PRE VYBRANÝ DEŇ */}
-      <section className="rounded-2xl p-3 sm:p-4 space-y-3 min-w-0">
+      {/* PANEL PRE VYBRANÝ DEŇ — maxWidth = šírka kalendára */}
+      <section className="rounded-2xl p-3 sm:p-4 space-y-3 min-w-0 mx-auto w-full" style={panelStyle}>
         <div className="text-sm opacity-70">Vybraný deň:</div>
         <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
 
@@ -238,7 +263,7 @@ export default function AdminSlotsClient() {
               min={1}
               value={cap}
               onChange={e=>setCap(Math.max(1, +e.target.value||1))}
-              className="border rounded px-2 py-2 w-12 sm:w-16"  // užšie
+              className="border rounded px-2 py-2 w-12 sm:w-16"
               disabled={busy}
             />
           </label>
@@ -268,7 +293,7 @@ export default function AdminSlotsClient() {
           <table className="w-full table-fixed text-xs sm:text-sm">
             <colgroup>
               <col className="w-[28%] sm:w-[22%]" />   {/* Čas */}
-              <col className="w-[16%] sm:w-[16%]" />   {/* Kapacita – veľmi úzka */}
+              <col className="w-[16%] sm:w-[16%]" />   {/* Kapacita */}
               <col className="w-[18%] sm:w-[20%]" />   {/* Stav */}
               <col className="w-[38%] sm:w-[42%]" />   {/* Akcie */}
             </colgroup>
@@ -295,7 +320,7 @@ export default function AdminSlotsClient() {
                         min={1}
                         value={s.capacity ?? 1}
                         onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-2 py-1 w-10 sm:w-14"  // ešte užšie v riadkoch
+                        className="border rounded px-2 py-1 w-10 sm:w-14"
                         disabled={busy}
                       />
                       <span className="hidden sm:inline text-xs opacity-60 whitespace-nowrap">
