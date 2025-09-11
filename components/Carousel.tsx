@@ -10,9 +10,8 @@ type CarouselProps = {
   edgeRadius?: number;
   /** Max. šírka na desktope (px). Default: 720. */
   desktopMaxWidth?: number;
-  /** Vnútorný “gutter” na mobile (px). Default: 12. */
+  /** Vnútorný “gutter” na mobile (px). Default: 8. */
   mobilePadding?: number;
-  /** Extra className na sekciu (voliteľné). */
   className?: string;
 };
 
@@ -23,14 +22,29 @@ function aspectToPaddingPercent(aspect?: string) {
   return (h / w) * 100;
 }
 
+/** jednoduchý hook: šírka okna < breakpoint? */
+function useIsNarrow(breakpoint = 1024) {
+  const [narrow, setNarrow] = React.useState<boolean>(() =>
+    typeof window === 'undefined' ? true : window.innerWidth < breakpoint
+  );
+  React.useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < breakpoint);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [breakpoint]);
+  return narrow;
+}
+
 export default function Carousel({
   images,
   aspect = '4/5',
   edgeRadius = 6,
   desktopMaxWidth = 720,
-  mobilePadding = 12,
+  mobilePadding = 8, // užší okraj na mobile
   className = '',
 }: CarouselProps) {
+  const isNarrow = useIsNarrow(1024);
   const total = Array.isArray(images) ? images.length : 0;
   const [index, setIndex] = React.useState(0);
   const [dragX, setDragX] = React.useState(0);
@@ -65,7 +79,7 @@ export default function Carousel({
     if (!dragging) return;
     const dx = e.clientX - startX.current;
     if (!lockRef.current) {
-      if (Math.abs(dx) < 6) return; // neblokuj vertikálny scroll pri malom pohybe
+      if (Math.abs(dx) < 6) return;
       lockRef.current = 'x';
     }
     if (lockRef.current === 'x') {
@@ -91,19 +105,28 @@ export default function Carousel({
   const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
   const padTop = aspectToPaddingPercent(aspect);
 
-  /** Kontajner ktorý:
-   * - na mobile má malý “gutter” (mobilePadding) od kraja,
-   * - na desktope je centrovaný a limitovaný desktopMaxWidth.
+  /** Vonkajší wrapper:
+   * - MOBILE (isNarrow): full-bleed cez celé viewport šírky, zruší padding rodiča
+   *   pomocou negatívnych marginov; ponechá len malý vnútorný padding (mobilePadding).
+   * - DESKTOP: vycentrovaná “karta” s maxWidth.
    */
-  const outerStyle: React.CSSProperties = {
-    width: '100%',
-    maxWidth: `${desktopMaxWidth}px`,
-    margin: '0 auto',
-    paddingLeft: `${mobilePadding}px`,
-    paddingRight: `${mobilePadding}px`,
-  };
+  const outerStyle: React.CSSProperties = isNarrow
+    ? {
+        width: '100vw',
+        maxWidth: 'none',
+        marginLeft: 'calc(50% - 50vw)',
+        marginRight: 'calc(50% - 50vw)',
+        paddingLeft: `${mobilePadding}px`,
+        paddingRight: `${mobilePadding}px`,
+      }
+    : {
+        width: '100%',
+        maxWidth: `${desktopMaxWidth}px`,
+        margin: '0 auto',
+        paddingLeft: 0,
+        paddingRight: 0,
+      };
 
-  /** Samotný viewport, edge-to-edge v rámci outeru. */
   const viewportStyle: React.CSSProperties = {
     position: 'relative',
     width: '100%',
