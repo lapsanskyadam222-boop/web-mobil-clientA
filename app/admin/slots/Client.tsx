@@ -157,15 +157,15 @@ export default function AdminSlotsClient() {
   if (loading) return <main className="p-6">Načítavam…</main>;
 
   return (
-    <main className="mx-auto max-w-3xl w-full p-4 sm:p-6 space-y-6 overflow-x-hidden">
-      <div className="flex items-center justify-between">
+    <main className="mx-auto max-w-3xl w-full p-4 sm:p-6 space-y-6 overflow-x-hidden min-w-0">
+      <div className="flex items-center justify-between min-w-0">
         <h1 className="text-2xl font-semibold">Správa slotov</h1>
         {saved && <span className="text-sm text-green-600">Uložené ✓</span>}
       </div>
 
       {/* KALENDÁR */}
-      <section className="rounded-2xl border p-3 sm:p-4">
-        <div className="mb-3 flex items-center justify-between">
+      <section className="rounded-2xl border p-3 sm:p-4 min-w-0">
+        <div className="mb-3 flex items-center justify-between min-w-0">
           <button
             className="rounded border px-3 py-1"
             onClick={()=>setCalMonth(m=>new Date(m.getFullYear(), m.getMonth()-1, 1))}
@@ -182,13 +182,13 @@ export default function AdminSlotsClient() {
         {/* hlavička dní */}
         <div
           style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}
-          className="text-center text-xs opacity-70"
+          className="text-center text-xs opacity-70 min-w-0"
         >
           <div>po</div><div>ut</div><div>st</div><div>št</div><div>pia</div><div>so</div><div>ne</div>
         </div>
 
         {/* týždne */}
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0">
           {weeks.map((week, wi) => (
             <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}>
               {week.map((d, di) => {
@@ -222,11 +222,11 @@ export default function AdminSlotsClient() {
       </section>
 
       {/* PANEL PRE VYBRANÝ DEŇ */}
-      <section className="rounded-2xl p-3 sm:p-4 space-y-3">
+      <section className="rounded-2xl p-3 sm:p-4 space-y-3 min-w-0">
         <div className="text-sm opacity-70">Vybraný deň:</div>
         <div className="text-lg font-semibold">{fmtDateLabel(new Date(selectedDate))}</div>
 
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2 min-w-0">
           <label className="block">
             <span className="block text-xs mb-1">Čas</span>
             <input type="time" value={time} onChange={e=>setTime(e.target.value)} className="border rounded px-3 py-2" disabled={busy}/>
@@ -238,7 +238,7 @@ export default function AdminSlotsClient() {
               min={1}
               value={cap}
               onChange={e=>setCap(Math.max(1, +e.target.value||1))}
-              className="border rounded px-2 py-2 w-14 sm:w-20"  // užší input
+              className="border rounded px-2 py-2 w-12 sm:w-16"  // užšie
               disabled={busy}
             />
           </label>
@@ -254,7 +254,7 @@ export default function AdminSlotsClient() {
         </div>
 
         {batchTimes.length>0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 min-w-0">
             {batchTimes.map(t=>(
               <span key={t} className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
                 {t}
@@ -264,13 +264,12 @@ export default function AdminSlotsClient() {
           </div>
         )}
 
-        <div className="rounded-lg border overflow-hidden">
+        <div className="rounded-lg border overflow-hidden min-w-0">
           <table className="w-full table-fixed text-xs sm:text-sm">
-            {/* užšie percentá – Kapacita dostala len ~18 % na mobile */}
             <colgroup>
               <col className="w-[28%] sm:w-[22%]" />   {/* Čas */}
-              <col className="w-[18%] sm:w-[18%]" />   {/* Kapacita – veľmi úzka */}
-              <col className="w-[16%] sm:w-[18%]" />   {/* Stav */}
+              <col className="w-[16%] sm:w-[16%]" />   {/* Kapacita – veľmi úzka */}
+              <col className="w-[18%] sm:w-[20%]" />   {/* Stav */}
               <col className="w-[38%] sm:w-[42%]" />   {/* Akcie */}
             </colgroup>
             <thead>
@@ -296,7 +295,7 @@ export default function AdminSlotsClient() {
                         min={1}
                         value={s.capacity ?? 1}
                         onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-2 py-1 w-10 sm:w-16"  // ešte užšie v riadkoch
+                        className="border rounded px-2 py-1 w-10 sm:w-14"  // ešte užšie v riadkoch
                         disabled={busy}
                       />
                       <span className="hidden sm:inline text-xs opacity-60 whitespace-nowrap">
@@ -315,18 +314,18 @@ export default function AdminSlotsClient() {
                   <td className="border px-2 py-1">
                     <div className="flex flex-wrap sm:flex-nowrap justify-end gap-1 sm:gap-2">
                       {!s.locked ? (
-                        <button onClick={()=>lock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100 text-xs sm:text-sm">
+                        <button onClick={()=>lock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100 text-xs sm:text-sm whitespace-nowrap">
                           Zamknúť
                         </button>
                       ) : (
-                        <button onClick={()=>unlock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100 text-xs sm:text-sm">
+                        <button onClick={()=>unlock(s.id)} disabled={busy} className="px-2 py-1 border rounded hover:bg-gray-100 text-xs sm:text-sm whitespace-nowrap">
                           Odomknúť
                         </button>
                       )}
-                      <button onClick={()=>del(s.id)} disabled={busy} className="px-2 py-1 border rounded text-red-600 hover:bg-gray-100 text-xs sm:text-sm">
+                      <button onClick={()=>del(s.id)} disabled={busy} className="px-2 py-1 border rounded text-red-600 hover:bg-gray-100 text-xs sm:text-sm whitespace-nowrap">
                         Vymazať
                       </button>
-                      <button onClick={()=>free(s.id)} disabled={busy} className="px-2 py-1 rounded bg-black text-white hover:brightness-110 text-xs sm:text-sm">
+                      <button onClick={()=>free(s.id)} disabled={busy} className="px-2 py-1 rounded bg-black text-white hover:brightness-110 text-xs sm:text-sm whitespace-nowrap">
                         Obnoviť
                       </button>
                     </div>
