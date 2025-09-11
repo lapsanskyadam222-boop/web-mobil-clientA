@@ -20,11 +20,9 @@ function toYMD(d: Date) {
 function fmtDateLabel(d: Date) {
   return d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
 }
-
-/* týždne pre kalendár */
 function buildMonthWeeks(monthAnchor: Date): Date[][] {
   const first = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
-  const startOffset = (first.getDay() + 6) % 7; // Po=0..Ne=6
+  const startOffset = (first.getDay() + 6) % 7;
   const start = new Date(first);
   start.setDate(first.getDate() - startOffset);
 
@@ -43,8 +41,6 @@ function buildMonthWeeks(monthAnchor: Date): Date[][] {
   }
   return weeks;
 }
-
-/* medir šírku kalendára, aby panel mal max rovnakú */
 function useMeasuredWidth<T extends HTMLElement>(): [React.RefObject<T>, number | null] {
   const ref = useRef<T>(null);
   const [w, setW] = useState<number | null>(null);
@@ -129,7 +125,6 @@ export default function AdminSlotsClient() {
     if (!res.ok) throw new Error(json?.error || 'Operácia zlyhala.');
     return json;
   }
-
   async function addOne() {
     if (!selectedDate || !time) return alert('Vyber dátum aj čas.');
     setBusy(true);
@@ -193,13 +188,11 @@ export default function AdminSlotsClient() {
                   onClick={()=>setCalMonth(m=>new Date(m.getFullYear(), m.getMonth()+1, 1))}>›</button>
         </div>
 
-        {/* hlavička dní */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}
              className="text-center text-xs opacity-70 min-w-0">
           <div>po</div><div>ut</div><div>st</div><div>št</div><div>pia</div><div>so</div><div>ne</div>
         </div>
 
-        {/* týždne */}
         <div className="space-y-2 min-w-0">
           {weeks.map((week, wi) => (
             <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}>
@@ -251,7 +244,7 @@ export default function AdminSlotsClient() {
               min={1}
               value={cap}
               onChange={e=>setCap(Math.max(1, +e.target.value||1))}
-              className="border rounded px-1 py-2 w-12 sm:w-16"   // užšie aj hore
+              className="border rounded px-1 py-2 w-12 sm:w-16"
               disabled={busy}
             />
           </label>
@@ -283,9 +276,64 @@ export default function AdminSlotsClient() {
           </div>
         )}
 
-        <div className="rounded-lg border overflow-x-hidden min-w-0">
+        {/* MOBILE: karty slotov (sm:hidden) */}
+        <div className="sm:hidden space-y-3">
+          {selectedSlots.length === 0 && (
+            <div className="text-center text-gray-500 py-6 text-sm">Žiadne sloty pre tento deň.</div>
+          )}
+          {selectedSlots.map(s => (
+            <div key={s.id} className="rounded-lg border p-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-base">{s.time}</div>
+                <div className="flex items-center gap-1">
+                  <span className={`inline-block rounded px-2 py-0.5 text-xs ${ (s.booked_count??0) > 0 ? 'bg-gray-900 text-white' : 'bg-gray-200'}`}>
+                    {(s.booked_count??0) > 0 ? 'Rezervované' : 'Voľné'}
+                  </span>
+                  {s.locked && <span className="inline-block rounded px-2 py-0.5 text-xs bg-amber-200 text-amber-900">Zamknuté</span>}
+                </div>
+              </div>
+
+              <div className="mt-2 flex items-center gap-2">
+                <label className="text-xs opacity-70">Kapacita</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={s.capacity ?? 1}
+                  onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
+                  className="border rounded px-1 py-1 w-12"
+                  disabled={busy}
+                />
+                <span className="text-xs opacity-60 ml-auto">({s.booked_count ?? 0} / {s.capacity ?? 1})</span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {!s.locked ? (
+                  <button onClick={()=>lock(s.id)} disabled={busy}
+                          className="px-3 py-1.5 border rounded text-xs">
+                    Zamknúť
+                  </button>
+                ) : (
+                  <button onClick={()=>unlock(s.id)} disabled={busy}
+                          className="px-3 py-1.5 border rounded text-xs">
+                    Odomknúť
+                  </button>
+                )}
+                <button onClick={()=>del(s.id)} disabled={busy}
+                        className="px-3 py-1.5 border rounded text-red-600 text-xs">
+                  Vymazať
+                </button>
+                <button onClick={()=>free(s.id)} disabled={busy}
+                        className="px-3 py-1.5 rounded bg-black text-white text-xs">
+                  Obnoviť
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* DESKTOP/TABLET: tabuľka (hidden na mobile) */}
+        <div className="rounded-lg border overflow-x-hidden min-w-0 hidden sm:block">
           <table className="w-full table-fixed text-xs sm:text-sm">
-            {/* veľmi úzky stĺpec Kapacita (~10 %) */}
             <colgroup>
               <col className="w-[26%] sm:w-[22%]" />  {/* Čas */}
               <col className="w-[10%] sm:w-[12%]" />  {/* Kapacita */}
@@ -304,7 +352,6 @@ export default function AdminSlotsClient() {
               {selectedSlots.length===0 && (
                 <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-500">Žiadne sloty pre tento deň.</td></tr>
               )}
-
               {selectedSlots.map(s=>(
                 <tr key={s.id}>
                   <td className="border px-2 py-1">{s.time}</td>
@@ -315,7 +362,7 @@ export default function AdminSlotsClient() {
                         min={1}
                         value={s.capacity ?? 1}
                         onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-1 py-1 w-8 sm:w-10"   // ▼ výrazne užšie
+                        className="border rounded px-1 py-1 w-8 sm:w-10"
                         disabled={busy}
                       />
                       <span className="hidden sm:inline text-xs opacity-60 whitespace-nowrap">
