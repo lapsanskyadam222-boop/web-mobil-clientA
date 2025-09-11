@@ -20,9 +20,11 @@ function toYMD(d: Date) {
 function fmtDateLabel(d: Date) {
   return d.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' });
 }
+
+/** poskladá týždne len pre daný mesiac */
 function buildMonthWeeks(monthAnchor: Date): Date[][] {
   const first = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
-  const startOffset = (first.getDay() + 6) % 7;
+  const startOffset = (first.getDay() + 6) % 7; // Po=0..Ne=6
   const start = new Date(first);
   start.setDate(first.getDate() - startOffset);
 
@@ -41,6 +43,8 @@ function buildMonthWeeks(monthAnchor: Date): Date[][] {
   }
   return weeks;
 }
+
+/** zmeria šírku elementu (kalendára), aby sme ňou ohraničili panel */
 function useMeasuredWidth<T extends HTMLElement>(): [React.RefObject<T>, number | null] {
   const ref = useRef<T>(null);
   const [w, setW] = useState<number | null>(null);
@@ -125,6 +129,7 @@ export default function AdminSlotsClient() {
     if (!res.ok) throw new Error(json?.error || 'Operácia zlyhala.');
     return json;
   }
+
   async function addOne() {
     if (!selectedDate || !time) return alert('Vyber dátum aj čas.');
     setBusy(true);
@@ -276,14 +281,14 @@ export default function AdminSlotsClient() {
           </div>
         )}
 
-        {/* MOBILE: karty slotov (sm:hidden) */}
-        <div className="sm:hidden space-y-3">
+        {/* KARTY – viditeľné do < lg (žiadne presahy) */}
+        <div className="lg:hidden space-y-3">
           {selectedSlots.length === 0 && (
             <div className="text-center text-gray-500 py-6 text-sm">Žiadne sloty pre tento deň.</div>
           )}
           {selectedSlots.map(s => (
             <div key={s.id} className="rounded-lg border p-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div className="font-semibold text-base">{s.time}</div>
                 <div className="flex items-center gap-1">
                   <span className={`inline-block rounded px-2 py-0.5 text-xs ${ (s.booked_count??0) > 0 ? 'bg-gray-900 text-white' : 'bg-gray-200'}`}>
@@ -331,14 +336,14 @@ export default function AdminSlotsClient() {
           ))}
         </div>
 
-        {/* DESKTOP/TABLET: tabuľka (hidden na mobile) */}
-        <div className="rounded-lg border overflow-x-hidden min-w-0 hidden sm:block">
+        {/* TABUĽKA – zapne sa až od lg (≥ 1024 px) */}
+        <div className="hidden lg:block rounded-lg border overflow-x-hidden min-w-0">
           <table className="w-full table-fixed text-xs sm:text-sm">
             <colgroup>
-              <col className="w-[26%] sm:w-[22%]" />  {/* Čas */}
-              <col className="w-[10%] sm:w-[12%]" />  {/* Kapacita */}
-              <col className="w-[18%] sm:w-[20%]" />  {/* Stav */}
-              <col className="w-[46%] sm:w-[46%]" />  {/* Akcie */}
+              <col className="w-[26%]" />  {/* Čas */}
+              <col className="w-[10%]" />  {/* Kapacita */}
+              <col className="w-[18%]" />  {/* Stav */}
+              <col className="w-[46%]" />  {/* Akcie */}
             </colgroup>
             <thead>
               <tr className="bg-gray-100">
@@ -362,10 +367,10 @@ export default function AdminSlotsClient() {
                         min={1}
                         value={s.capacity ?? 1}
                         onChange={e=>changeCap(s.id, Number(e.target.value)||1)}
-                        className="border rounded px-1 py-1 w-8 sm:w-10"
+                        className="border rounded px-1 py-1 w-10"
                         disabled={busy}
                       />
-                      <span className="hidden sm:inline text-xs opacity-60 whitespace-nowrap">
+                      <span className="text-xs opacity-60 whitespace-nowrap">
                         ({s.booked_count ?? 0} / {s.capacity ?? 1})
                       </span>
                     </div>
