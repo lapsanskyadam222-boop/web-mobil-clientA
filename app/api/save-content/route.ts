@@ -1,40 +1,47 @@
+// app/api/save-content/route.ts
 import { NextResponse } from 'next/server';
 import { writeJson } from '@/lib/blobJson';
 import type { SiteContent } from '@/lib/types';
 
 export const runtime = 'edge';
 
-function isStrArray(a: unknown) {
-  return Array.isArray(a) && a.every((x) => typeof x === 'string');
-}
+const BLOB_PATH = 'web-content.json';
 
-function clampImages(arr: string[], max = 10) {
-  // očistíme, odstránime duplikáty, zrežeme na max
-  const clean = arr.filter(Boolean).map(String);
-  const unique = Array.from(new Set(clean));
-  return unique.slice(0, max);
+// jednoduchý guard na reťazec
+const isStr = (v: unknown) => typeof v === 'string';
+
+// validácia poľa URL (struny) s dĺžkou 0..10
+function validateImages(input: unknown, fieldName: string): string[] {
+  const arr = Array.isArray(input) ? input : [];
+  if (arr.length > 10) {
+    throw new Error(`${fieldName}: maximálne 10 obrázkov`);
+  }
+  const allStrings = arr.every((x) => typeof x === 'string' && x.length > 0);
+  if (!allStrings) {
+    throw new Error(`${fieldName}: neplatný formát (očakávam pole URL stringov)`);
+  }
+  return arr as string[];
 }
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as Partial<SiteContent>;
+    const body = await req.json();
 
-    const logoUrl = (body.logoUrl ?? null) as string | null;
-    const hero = isStrArray(body.hero) ? clampImages(body.hero) : [];
-    const heroText = typeof body.heroText === 'string' ? body.heroText : '';
-    const gallery = isStrArray(body.gallery) ? clampImages(body.gallery) : [];
-    const bodyText = typeof body.bodyText === 'string' ? body.bodyText : '';
+    const payload: SiteContent = {
+      logoUrl: body?.logoUrl ?? null,
+      carousel1: validateImages(body?.carousel1, 'carousel1'),
+      text1: isStr(body?.text1) ? body.text1 : '',
+      carousel2: validateImages(body?.carousel2, 'carousel2'),
+      text2: isStr(body?.text2) ? body.text2 : '',
+    };
 
-    // všetko je dobrovoľné, max 10 fotiek per carousel
-    const payload: SiteContent = { logoUrl, hero, heroText, gallery, bodyText };
-
-    // ulož – prepíše existujúci JSON bez náhodného suffixu
-    await writeJson('content/site.json', payload);
+    // zápis do Blob-u (prepíše existujúci súbor)
+    await writeJson<SiteContent>(BLOB_PATH, payload);
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || 'Save failed' },
+      { error: e?.message ?? 'Failed to save content' },
       { status: 400 }
     );
   }

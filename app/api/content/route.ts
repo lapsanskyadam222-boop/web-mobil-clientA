@@ -1,42 +1,40 @@
+// app/api/content/route.ts
 import { NextResponse } from 'next/server';
-import { readJson } from '@/lib/blobJson';
 import type { SiteContent } from '@/lib/types';
+import { readJson } from '@/lib/blobJson';
 
-/**
- * Číta JSON z Vercel Blob (content/site.json).
- * Zachováva spätnú kompatibilitu so starou schémou:
- *  - logoUrl, carousel, text -> premapuje na hero/heroText
- */
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const runtime = 'edge';
+
+const BLOB_PATH = 'web-content.json';
 
 export async function GET() {
-  // kde ukladáme
-  const PATH = 'content/site.json';
+  try {
+    // Môže vrátiť null, ak ešte neexistuje.
+    const raw = await readJson<any>(BLOB_PATH);
 
-  // pokus o načítanie novej schémy
-  const json = await readJson<any>(`https://blob.vercel-storage.com/${PATH}`);
+    // Spätná kompatibilita:
+    // - ak je staré pole `carousel`/`text`, mapneme na carousel1/text1
+    const content: SiteContent = {
+      logoUrl: raw?.logoUrl ?? null,
+      carousel1: Array.isArray(raw?.carousel1)
+        ? raw.carousel1
+        : Array.isArray(raw?.carousel)
+          ? raw.carousel
+          : [],
+      text1: typeof raw?.text1 === 'string'
+        ? raw.text1
+        : typeof raw?.text === 'string'
+          ? raw.text
+          : '',
+      carousel2: Array.isArray(raw?.carousel2) ? raw.carousel2 : [],
+      text2: typeof raw?.text2 === 'string' ? raw.text2 : '',
+    };
 
-  // fallback: ak nie je alebo je stará schéma, namapujeme
-  let data: SiteContent;
-  if (json && ('hero' in json || 'gallery' in json)) {
-    data = {
-      logoUrl: json.logoUrl ?? null,
-      hero: Array.isArray(json.hero) ? json.hero : [],
-      heroText: typeof json.heroText === 'string' ? json.heroText : '',
-      gallery: Array.isArray(json.gallery) ? json.gallery : [],
-      bodyText: typeof json.bodyText === 'string' ? json.bodyText : '',
-    };
-  } else {
-    // STARÁ SCHÉMA: { logoUrl, carousel, text }
-    data = {
-      logoUrl: json?.logoUrl ?? null,
-      hero: Array.isArray(json?.carousel) ? json.carousel : [],
-      heroText: typeof json?.text === 'string' ? json.text : '',
-      gallery: [],
-      bodyText: '',
-    };
+    return NextResponse.json(content, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message ?? 'Failed to read content' },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json(data, { status: 200 });
 }
