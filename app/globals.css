@@ -23,7 +23,7 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-weight: 300;                /* default = Light (300) */
+  font-weight: 400;                /* default = Regular (400) */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
