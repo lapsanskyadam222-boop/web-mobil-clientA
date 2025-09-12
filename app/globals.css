@@ -44,6 +44,9 @@ input[type="reset"] {
   font-weight: 800; /* tlačidlá zvýraznené */
 }
 
+/* Zachovaj nové riadky z admin textu */
+.preserve-lines { white-space: pre-wrap; }
+
 /* Pomocné utility */
 .mx-auto { margin-left: auto; margin-right: auto; }
 .max-w-screen-sm { max-width: 640px; }

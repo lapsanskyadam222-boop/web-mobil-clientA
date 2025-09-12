@@ -75,9 +75,12 @@ export default async function HomePage() {
           </div>
         )}
 
-        {/* TEXT */}
+        {/* TEXT – zachovať odseky z admina */}
         {text ? (
-          <article className="prose text-center" style={{ maxWidth: 'min(92vw, 900px)' }}>
+          <article
+            className="prose text-center preserve-lines"
+            style={{ maxWidth: 'min(92vw, 900px)' }}
+          >
             {text}
           </article>
         ) : (
