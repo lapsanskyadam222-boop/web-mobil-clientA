@@ -31,27 +31,37 @@ export function FileDrop({
     setBusy(true);
     try {
       const results = await Promise.all(
-        arr.map(f => upload(f.name, f, {
-          access: 'public',
-          handleUploadUrl: '/api/blob/upload'
-        }))
+        arr.map(f =>
+          upload(f.name, f, {
+            access: 'public',
+            handleUploadUrl: '/api/blob/upload'
+          })
+        )
       );
       onUploaded(results.map(r => r.url));
     } catch (e: any) {
       setErr(e?.message || 'Upload zlyhal');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium">{label}</label>
       <div
         className="border-2 border-dashed rounded p-4 text-center cursor-pointer"
         onClick={() => inputRef.current?.click()}
       >
-        Presuň sem JPG alebo klikni na výber.
+        {label}
       </div>
-      <input ref={inputRef} type="file" accept={accept} multiple={multiple} hidden onChange={e => e.target.files && handleFiles(e.target.files)} />
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        hidden
+        onChange={e => e.target.files && handleFiles(e.target.files)}
+      />
       {busy && <p>Nahrávam…</p>}
       {err && <p className="text-red-600 text-sm">{err}</p>}
     </div>
