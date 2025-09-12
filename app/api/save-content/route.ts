@@ -1,43 +1,41 @@
 import { NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
-import { z } from 'zod';
+import { writeJson } from '@/lib/blobJson';
+import type { SiteContent } from '@/lib/types';
 
-const Schema = z.object({
-  logoUrl: z.string().url().nullable(),
-  // dovoľ aj prázdny carousel (ak chceš vyžadovať aspoň 1, daj .min(1))
-  carousel: z.array(z.string().url()).min(0).max(10),
-  text: z.string().max(5000),
-});
+export const runtime = 'edge';
+
+function isStrArray(a: unknown) {
+  return Array.isArray(a) && a.every((x) => typeof x === 'string');
+}
+
+function clampImages(arr: string[], max = 10) {
+  // očistíme, odstránime duplikáty, zrežeme na max
+  const clean = arr.filter(Boolean).map(String);
+  const unique = Array.from(new Set(clean));
+  return unique.slice(0, max);
+}
 
 export async function POST(req: Request) {
   try {
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    if (!token) {
-      return NextResponse.json({ error: 'Chýba BLOB_READ_WRITE_TOKEN' }, { status: 500 });
-    }
+    const body = (await req.json()) as Partial<SiteContent>;
 
-    const json = await req.json();
-    const parsed = Schema.safeParse(json);
-    if (!parsed.success) {
-      return NextResponse.json({ error: 'Neplatné dáta' }, { status: 400 });
-    }
+    const logoUrl = (body.logoUrl ?? null) as string | null;
+    const hero = isStrArray(body.hero) ? clampImages(body.hero) : [];
+    const heroText = typeof body.heroText === 'string' ? body.heroText : '';
+    const gallery = isStrArray(body.gallery) ? clampImages(body.gallery) : [];
+    const bodyText = typeof body.bodyText === 'string' ? body.bodyText : '';
 
-    const payload = {
-      ...parsed.data,
-      updatedAt: new Date().toISOString(),
-    };
+    // všetko je dobrovoľné, max 10 fotiek per carousel
+    const payload: SiteContent = { logoUrl, hero, heroText, gallery, bodyText };
 
-    // 🔴 kľúčová zmena: unikátne meno súboru
-    const key = `site-content-${Date.now()}.json`;
+    // ulož – prepíše existujúci JSON bez náhodného suffixu
+    await writeJson('content/site.json', payload);
 
-    const res = await put(key, JSON.stringify(payload, null, 2), {
-      access: 'public',
-      contentType: 'application/json',
-      addRandomSuffix: true, // ešte viac zaručí unikátne URL
-    });
-
-    return NextResponse.json({ ok: true, url: res.url, key });
-  } catch {
-    return NextResponse.json({ error: 'Ukladanie zlyhalo' }, { status: 500 });
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || 'Save failed' },
+      { status: 400 }
+    );
   }
 }

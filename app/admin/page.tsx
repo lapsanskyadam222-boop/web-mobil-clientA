@@ -2,68 +2,62 @@
 
 import { useEffect, useState } from 'react';
 import { FileDrop } from '@/components/FileDrop';
+import type { SiteContent } from '@/lib/types';
 
-type SavePayload = {
-  logoUrl: string | null;
-  carousel: string[]; // presne stringové URL
-  text: string;
-};
+type SavePayload = SiteContent;
 
 export default function AdminPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [carousel, setCarousel] = useState<string[]>([]);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [ok, setOk] = useState<string>('');
-  const [err, setErr] = useState<string>('');
 
-  // (nepovinné) – ak chceš, môžeš si načítať existujúci obsah a predvyplniť formulár
+  // nový model
+  const [hero, setHero] = useState<string[]>([]);
+  const [heroText, setHeroText] = useState('');
+  const [gallery, setGallery] = useState<string[]>([]);
+  const [bodyText, setBodyText] = useState('');
+
+  const [busy, setBusy] = useState(false);
+  const [ok, setOk] = useState('');
+  const [err, setErr] = useState('');
+
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch('/api/content', { cache: 'no-store' });
         if (!res.ok) return;
-        const data = await res.json();
-        setLogoUrl(data.logoUrl ?? null);
-        setCarousel(Array.isArray(data.carousel) ? data.carousel : []);
-        setText(data.text ?? '');
+        const d = (await res.json()) as SiteContent;
+        setLogoUrl(d.logoUrl ?? null);
+        setHero(Array.isArray(d.hero) ? d.hero : []);
+        setHeroText(d.heroText ?? '');
+        setGallery(Array.isArray(d.gallery) ? d.gallery : []);
+        setBodyText(d.bodyText ?? '');
       } catch {}
     })();
   }, []);
 
-  const removeCarouselAt = (idx: number) => {
-    setCarousel(prev => prev.filter((_, i) => i !== idx));
-  };
+  const limit10 = (arr: string[]) =>
+    Array.from(new Set(arr.filter(Boolean).map(String))).slice(0, 10);
 
-  const submit = async () => {
-    setBusy(true);
-    setOk('');
-    setErr('');
+  const removeAt = (setter: (v: string[]) => void, arr: string[], idx: number) =>
+    setter(arr.filter((_, i) => i !== idx));
 
-    // Zod na serveri vyžaduje: carousel min. 1 a max. 10
-    if (carousel.length < 1) {
-      setBusy(false);
-      setErr('Pridaj aspoň jeden obrázok do carouselu.');
-      return;
-    }
-    if (carousel.length > 10) {
-      setBusy(false);
-      setErr('Maximálne 10 obrázkov v carousele.');
-      return;
-    }
-
-    const payload: SavePayload = {
-      logoUrl: logoUrl ?? null,
-      carousel: [...carousel], // posielame ČISTÉ STRINGY
-      text: text ?? '',
-    };
+  const save = async () => {
+    setBusy(true); setOk(''); setErr('');
 
     try {
+      const payload: SavePayload = {
+        logoUrl,
+        hero: limit10(hero),
+        heroText: heroText ?? '',
+        gallery: limit10(gallery),
+        bodyText: bodyText ?? '',
+      };
+
       const res = await fetch('/api/save-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j?.error || 'Ukladanie zlyhalo');
@@ -77,10 +71,10 @@ export default function AdminPage() {
   };
 
   return (
-    <main className="max-w-xl mx-auto py-8 space-y-8">
+    <main className="max-w-xl mx-auto py-8 space-y-10">
       <h1 className="text-xl font-semibold">Admin editor</h1>
 
-      {/* Logo */}
+      {/* LOGO */}
       <section className="space-y-3">
         <h2 className="font-medium">Logo (JPG, ≤10MB)</h2>
         <FileDrop
@@ -88,10 +82,7 @@ export default function AdminPage() {
           multiple={false}
           maxPerFileMB={10}
           accept="image/jpeg"
-          onUploaded={(urls) => {
-            // vezmeme prvé URL
-            setLogoUrl(urls[0] ?? null);
-          }}
+          onUploaded={(urls) => setLogoUrl(urls[0] ?? null)}
         />
         {logoUrl && (
           <div className="mt-2">
@@ -101,33 +92,26 @@ export default function AdminPage() {
         )}
       </section>
 
-      {/* Carousel */}
+      {/* CAROUSEL #1 */}
       <section className="space-y-3">
-        <h2 className="font-medium">Carousel obrázky (1–10 JPG, ≤10MB/ks)</h2>
+        <h2 className="font-medium">Carousel #1 (0–10 JPG, ≤10MB/ks)</h2>
         <FileDrop
           label="Presuň sem JPG alebo klikni na výber."
           multiple
           maxPerFileMB={10}
           accept="image/jpeg"
-          onUploaded={(urls) => {
-            // PRIDAŤ do poľa stringových URL (nie objekty)
-            setCarousel((prev) => {
-              const next = [...prev, ...urls];
-              // limit 10 kusov
-              return next.slice(0, 10);
-            });
-          }}
+          onUploaded={(urls) => setHero((prev) => limit10([...prev, ...urls]))}
         />
-        {carousel.length > 0 && (
+        {hero.length > 0 && (
           <div className="grid grid-cols-3 gap-3">
-            {carousel.map((src, i) => (
+            {hero.map((src, i) => (
               <div key={src + i} className="relative border rounded p-1">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={`img-${i + 1}`} className="w-full h-28 object-contain" />
+                <img src={src} alt={`hero-${i + 1}`} className="w-full h-28 object-contain" />
                 <button
                   type="button"
                   className="absolute -top-2 -right-2 bg-black text-white text-xs rounded-full px-2 py-1"
-                  onClick={() => removeCarouselAt(i)}
+                  onClick={() => removeAt(setHero, hero, i)}
                   aria-label={`Odstrániť ${i + 1}`}
                 >
                   ×
@@ -136,23 +120,58 @@ export default function AdminPage() {
             ))}
           </div>
         )}
-      </section>
-
-      {/* Text */}
-      <section className="space-y-2">
-        <h2 className="font-medium">Text</h2>
         <textarea
           className="w-full border rounded p-2"
           rows={3}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
+          placeholder="Text pod 1. carouselom"
+          value={heroText}
+          onChange={(e) => setHeroText(e.target.value)}
           maxLength={5000}
         />
       </section>
 
+      {/* CAROUSEL #2 */}
+      <section className="space-y-3">
+        <h2 className="font-medium">Carousel #2 (0–10 JPG, ≤10MB/ks)</h2>
+        <FileDrop
+          label="Presuň sem JPG alebo klikni na výber."
+          multiple
+          maxPerFileMB={10}
+          accept="image/jpeg"
+          onUploaded={(urls) => setGallery((prev) => limit10([...prev, ...urls]))}
+        />
+        {gallery.length > 0 && (
+          <div className="grid grid-cols-3 gap-3">
+            {gallery.map((src, i) => (
+              <div key={src + i} className="relative border rounded p-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={`gallery-${i + 1}`} className="w-full h-28 object-contain" />
+                <button
+                  type="button"
+                  className="absolute -top-2 -right-2 bg-black text-white text-xs rounded-full px-2 py-1"
+                  onClick={() => removeAt(setGallery, gallery, i)}
+                  aria-label={`Odstrániť ${i + 1}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <textarea
+          className="w-full border rounded p-2"
+          rows={3}
+          placeholder="Text pod 2. carouselom"
+          value={bodyText}
+          onChange={(e) => setBodyText(e.target.value)}
+          maxLength={5000}
+        />
+      </section>
+
+      {/* AKCIE */}
       <div className="space-y-2">
         <button
-          onClick={submit}
+          onClick={save}
           disabled={busy}
           className="bg-black text-white rounded px-4 py-2 disabled:opacity-50"
         >
@@ -161,7 +180,7 @@ export default function AdminPage() {
         {ok && <p className="text-green-700 text-sm">{ok}</p>}
         {err && <p className="text-red-600 text-sm">{err}</p>}
         <p className="text-xs text-gray-500">
-          Zmeny sa okamžite prejavia – homepage ich číta vždy „no‑store“.
+          Zmeny sa prejavia okamžite – homepage číta obsah s <code>no-store</code>.
         </p>
       </div>
     </main>
