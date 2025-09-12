@@ -36,6 +36,7 @@ export default function Carousel({
   const [dragging, setDragging] = React.useState(false);
 
   const startX = React.useRef(0);
+  const startT = React.useRef(0);
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const widthRef = React.useRef(1);
 
@@ -49,25 +50,53 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
+  // Preload susedných snímok pre rýchlejšie prepnutie
+  React.useEffect(() => {
+    if (!total) return;
+    const preload = (i: number) => {
+      if (i < 0 || i >= total) return;
+      const src = images[i];
+      if (!src) return;
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = src;
+    };
+    preload(index + 1);
+    preload(index - 1);
+  }, [index, images, total]);
+
   const begin = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
     startX.current = e.clientX;
+    startT.current = performance.now();
     setDragging(true);
     setDragX(0);
   };
+
   const move = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
-    if (Math.abs(dx) < 6) return;
+    if (Math.abs(dx) < 4) return; // citlivejší prah na zachytenie horizontálneho pohybu
     e.preventDefault();
     setDragX(dx);
   };
+
   const end = () => {
     if (!dragging) return;
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
-    if (delta <= -0.25 && index < total - 1) next = index + 1;
-    if (delta >=  0.25 && index > 0)        next = index - 1;
+
+    // znížený prah na prelistovanie
+    const THRESH = 0.12;
+
+    // jednoduchý „flick“: ak gesto bolo rýchle, povoľ menší posun
+    const dt = Math.max(1, performance.now() - startT.current); // ms
+    const speedPxPerMs = Math.abs(dragX) / dt;
+    const fast = speedPxPerMs > 0.5;
+
+    if ((delta <= -THRESH || (dragX < 0 && fast)) && index < total - 1) next = index + 1;
+    if ((delta >=  THRESH || (dragX > 0 && fast)) && index > 0)        next = index - 1;
+
     setIndex(next);
     setDragX(0);
     setDragging(false);
@@ -81,9 +110,16 @@ export default function Carousel({
   return (
     <section className={className}>
       {/* OUTER: desktop = centrovaný s maxWidth; mobile = full-bleed cez media query */}
-      <div className="carousel-outer" style={{ ['--maxw' as any]: `${desktopMaxWidth}px`, ['--mpad' as any]: `${mobilePadding}px` }}>
+      <div
+        className="carousel-outer"
+        style={{ ['--maxw' as any]: `${desktopMaxWidth}px`, ['--mpad' as any]: `${mobilePadding}px` }}
+      >
         {/* VIEWPORT */}
-        <div ref={wrapRef} className="carousel-viewport" style={{ borderRadius: `${edgeRadius}px` }}>
+        <div
+          ref={wrapRef}
+          className="carousel-viewport"
+          style={{ borderRadius: `${edgeRadius}px` }}
+        >
           {/* TRACK */}
           <div
             className="carousel-track"
@@ -105,6 +141,11 @@ export default function Carousel({
                     alt={`slide-${i + 1}`}
                     draggable={false}
                     loading={i === 0 ? 'eager' : 'lazy'}
+                    // pomôcky pre rýchlejšie zobrazenie
+                    decoding="async"
+                    // @ts-expect-error modern browsers support this attribute
+                    fetchpriority={i === 0 ? 'high' : 'auto'}
+                    sizes="(max-width: 1023px) 100vw, 720px"
                   />
                 </div>
               </div>
@@ -131,7 +172,9 @@ export default function Carousel({
           touch-action: pan-y;
           user-select: none;
           will-change: transform;
+          cursor: grab;
         }
+        .carousel-track:active { cursor: grabbing; }
         .slide {
           position: relative;
           flex: 0 0 100%;
