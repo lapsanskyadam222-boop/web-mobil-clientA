@@ -3,6 +3,7 @@
   --logoGapBottom: calc(var(--logoH) * 0.3);  /* spodná medzera = 30 % výšky loga */
   --logoGapTop: calc(var(--logoGapBottom) * 0.66); /* horná medzera = 2/3 spodnej */
   --font-sans: 'Manrope', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color-scheme: light;
 }
 
 /* 📱 Mobilné zariadenia */
@@ -14,37 +15,45 @@
   }
 }
 
-:root { color-scheme: light; }
 * { box-sizing: border-box; }
-
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-weight: 400; /* Regular 400 ako základ */
+  font-weight: 400;                /* default = Regular (400) */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, h4, h5, h6,
-strong, b {
-  font-weight: 800; /* ExtraBold pre nadpisy/hrubé texty */
+/* Nadpisy a zvýraznené prvky = ExtraBold (800) */
+h1, h2, h3, h4, h5, h6, strong, b {
+  font-weight: 800;
 }
 
-/* Form prvky a tlačidlá */
+/* Form prvky */
 button,
 input,
 select,
 textarea {
   font-family: var(--font-sans);
-  font-weight: 400; /* základ = Regular */
+  font-weight: 400;
 }
 
+/* Tlačidlá zvýrazníme */
 button,
 input[type="button"],
 input[type="submit"],
 input[type="reset"] {
-  font-weight: 800; /* tlačidlá zvýraznené */
+  font-weight: 800;
 }
 
-/* Pomocné utility */
+/* 🔹 Kalendár zákazníka – dátumy = tenké písmo (400) */
+#customer-calendar button,
+#customer-calendar td,
+#customer-calendar th {
+  font-weight: 400 !important;
+}
+
+/* ------- tvoje utility triedy ------- */
 .mx-auto { margin-left: auto; margin-right: auto; }
 .max-w-screen-sm { max-width: 640px; }
 .p-4 { padding: 1rem; }
