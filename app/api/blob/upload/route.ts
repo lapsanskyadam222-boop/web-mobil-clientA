@@ -1,3 +1,4 @@
+// app/api/blob/upload/route.ts
 import { NextResponse } from 'next/server';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 
@@ -12,18 +13,19 @@ export async function POST(req: Request) {
       request: req,
       onBeforeGenerateToken: async () => {
         return {
-          allowedContentTypes: ['image/jpeg'],
+          // ✅ povolené typy: JPG aj PNG
+          allowedContentTypes: ['image/jpeg', 'image/png'],
           addRandomSuffix: true,
-          tokenPayload: JSON.stringify({ kind: 'adminUpload' })
+          tokenPayload: JSON.stringify({ kind: 'adminUpload' }),
         };
       },
       onUploadCompleted: async ({ blob }) => {
-        // TS: explicitne prečítame veľkosť súboru
+        // kontrola veľkosti (≤ 10 MB)
         const fileSize = (blob as any).size as number;
         if (fileSize > 10 * 1024 * 1024) {
           throw new Error('Súbor prekračuje 10 MB');
         }
-      }
+      },
     });
 
     return NextResponse.json(json);
