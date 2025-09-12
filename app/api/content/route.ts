@@ -1,46 +1,42 @@
 import { NextResponse } from 'next/server';
-import { list } from '@vercel/blob';
+import { readJson } from '@/lib/blobJson';
+import type { SiteContent } from '@/lib/types';
+
+/**
+ * Číta JSON z Vercel Blob (content/site.json).
+ * Zachováva spätnú kompatibilitu so starou schémou:
+ *  - logoUrl, carousel, text -> premapuje na hero/heroText
+ */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET() {
-  try {
-    // berieme najnovší JSON s prefixom
-    const { blobs } = await list({ prefix: 'site-content-' });
+  // kde ukladáme
+  const PATH = 'content/site.json';
 
-    if (!blobs.length) {
-      return NextResponse.json({
-        logoUrl: null,
-        carousel: [],
-        text: '',
-        updatedAt: '',
-      });
-    }
+  // pokus o načítanie novej schémy
+  const json = await readJson<any>(`https://blob.vercel-storage.com/${PATH}`);
 
-    const latest = blobs.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime())[0];
-
-    // ak by si predsa len narazil na CDN cache, dáme cache-buster
-    const res = await fetch(`${latest.url}?ts=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) {
-      return NextResponse.json({
-        logoUrl: null,
-        carousel: [],
-        text: '',
-        updatedAt: '',
-      });
-    }
-
-    const json = await res.json();
-    return NextResponse.json({
+  // fallback: ak nie je alebo je stará schéma, namapujeme
+  let data: SiteContent;
+  if (json && ('hero' in json || 'gallery' in json)) {
+    data = {
       logoUrl: json.logoUrl ?? null,
-      carousel: Array.isArray(json.carousel) ? json.carousel : [],
-      text: json.text ?? '',
-      updatedAt: json.updatedAt ?? '',
-    });
-  } catch {
-    return NextResponse.json({
-      logoUrl: null,
-      carousel: [],
-      text: '',
-      updatedAt: '',
-    });
+      hero: Array.isArray(json.hero) ? json.hero : [],
+      heroText: typeof json.heroText === 'string' ? json.heroText : '',
+      gallery: Array.isArray(json.gallery) ? json.gallery : [],
+      bodyText: typeof json.bodyText === 'string' ? json.bodyText : '',
+    };
+  } else {
+    // STARÁ SCHÉMA: { logoUrl, carousel, text }
+    data = {
+      logoUrl: json?.logoUrl ?? null,
+      hero: Array.isArray(json?.carousel) ? json.carousel : [],
+      heroText: typeof json?.text === 'string' ? json.text : '',
+      gallery: [],
+      bodyText: '',
+    };
   }
+
+  return NextResponse.json(data, { status: 200 });
 }
