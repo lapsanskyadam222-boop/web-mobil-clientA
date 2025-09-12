@@ -13,10 +13,10 @@ export const viewport = {
   initialScale: 1,
 };
 
-// Google font – Manrope (Light 300, ExtraBold 800)
+// Google font – Manrope (Regular 400, ExtraBold 800)
 const manrope = Manrope({
   subsets: ['latin'],
-  weight: ['300', '800'],
+  weight: ['400', '800'],
   variable: '--font-manrope',
   display: 'swap',
 });
