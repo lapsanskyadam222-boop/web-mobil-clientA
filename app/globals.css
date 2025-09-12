@@ -1,7 +1,12 @@
+/* ====== Font & farby ====== */
 :root {
+  /* Font variabla z next/font (Manrope) */
+  --font-sans: var(--font-manrope), system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+
   --logoH: clamp(64px, 12vh, 120px);          /* základná výška loga (PC/tablet) */
   --logoGapBottom: calc(var(--logoH) * 0.3);  /* spodná medzera = 30 % výšky loga */
   --logoGapTop: calc(var(--logoGapBottom) * 0.66); /* horná medzera = 2/3 spodnej */
+  color-scheme: light;
 }
 
 /* 📱 Mobilné zariadenia */
@@ -13,9 +18,22 @@
   }
 }
 
-:root { color-scheme: light; }
+/* ====== Reset & typografia ====== */
 * { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 300;                /* default = Light (300) */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Nadpisy a zvýraznené prvky = ExtraBold (800) */
+h1, h2, h3, h4, h5, h6, strong, b {
+  font-weight: 800;
+}
+
+/* ====== „utility“ ktoré už používaš ====== */
 .mx-auto { margin-left: auto; margin-right: auto; }
 .max-w-screen-sm { max-width: 640px; }
 .p-4 { padding: 1rem; }

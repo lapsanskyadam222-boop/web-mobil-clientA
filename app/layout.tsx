@@ -1,5 +1,6 @@
 import './globals.css';
 import type { ReactNode } from 'react';
+import { Manrope } from 'next/font/google';
 
 export const metadata = {
   title: 'Web – logo, carousel, text',
@@ -12,9 +13,17 @@ export const viewport = {
   initialScale: 1,
 };
 
+// Google font – Manrope (Light 300, ExtraBold 800)
+const manrope = Manrope({
+  subsets: ['latin'],
+  weight: ['300', '800'],
+  variable: '--font-manrope',
+  display: 'swap',
+});
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="sk">
+    <html lang="sk" className={manrope.variable}>
       <body className="min-h-dvh bg-white text-gray-900 antialiased">
         <div className="mx-auto max-w-screen-sm p-4">{children}</div>
       </body>
