@@ -2,51 +2,53 @@
 
 import { useEffect, useState } from 'react';
 import { FileDrop } from '@/components/FileDrop';
-import type { SiteContent, ThemeConfig } from '@/lib/types';
 
 type SavePayload = {
   logoUrl: string | null;
   carousel: string[];
   text: string;
-  theme: ThemeConfig;
+  theme?: {
+    mode: 'light' | 'dark' | 'custom';
+    bgColor?: string;
+    textColor?: string;
+  };
 };
 
 export default function AdminPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [carousel, setCarousel] = useState<string[]>([]);
   const [text, setText] = useState('');
-
-  // TÉMA (default = light)
-  const [themeMode, setThemeMode] = useState<ThemeConfig['mode']>('light');
-  const [bgColor, setBgColor] = useState('#ffffff');
-  const [textColor, setTextColor] = useState('#111111');
-
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState<string>('');
   const [err, setErr] = useState<string>('');
 
-  // Načítanie existujúceho obsahu (ak je)
+  // téma (predpoklad: toto tu už máš; nechávam kompatibilitu)
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'custom'>('light');
+  const [bgColor, setBgColor] = useState('#ffffff');
+  const [textColor, setTextColor] = useState('#111111');
+
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch('/api/content', { cache: 'no-store' });
         if (!res.ok) return;
-        const data: SiteContent = await res.json();
-
+        const data = await res.json();
         setLogoUrl(data.logoUrl ?? null);
         setCarousel(Array.isArray(data.carousel) ? data.carousel : []);
         setText(data.text ?? '');
 
-        const th = data.theme;
-        if (th?.mode) setThemeMode(th.mode);
-        if (th?.bgColor) setBgColor(th.bgColor);
-        if (th?.textColor) setTextColor(th.textColor);
+        const t = data.theme ?? { mode: 'light' };
+        setThemeMode(t.mode);
+        if (t.mode === 'custom') {
+          if (t.bgColor) setBgColor(t.bgColor);
+          if (t.textColor) setTextColor(t.textColor);
+        }
       } catch {}
     })();
   }, []);
 
   const removeCarouselAt = (idx: number) => {
-    setCarousel(prev => prev.filter((_, i) => i !== idx));
+    setCarousel((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const submit = async () => {
@@ -54,33 +56,20 @@ export default function AdminPage() {
     setOk('');
     setErr('');
 
-    // carousel min. 1 a max. 10
-    if (carousel.length < 1) {
-      setBusy(false);
-      setErr('Pridaj aspoň jeden obrázok do carouselu.');
-      return;
-    }
     if (carousel.length > 10) {
       setBusy(false);
       setErr('Maximálne 10 obrázkov v carousele.');
       return;
     }
 
-    // poskladať theme objekt
-    const theme: ThemeConfig =
-      themeMode === 'custom'
-        ? {
-            mode: 'custom',
-            bgColor: bgColor || '#ffffff',
-            textColor: textColor || '#111111',
-          }
-        : { mode: themeMode };
-
     const payload: SavePayload = {
       logoUrl: logoUrl ?? null,
       carousel: [...carousel],
       text: text ?? '',
-      theme,
+      theme:
+        themeMode === 'custom'
+          ? { mode: 'custom', bgColor, textColor }
+          : { mode: themeMode },
     };
 
     try {
@@ -105,13 +94,14 @@ export default function AdminPage() {
     <main className="max-w-xl mx-auto py-8 space-y-8">
       <h1 className="text-xl font-semibold">Admin editor</h1>
 
-      {/* Logo */}
+      {/* Logo (povolíme PNG aj JPG) */}
       <section className="space-y-3">
+        <h2 className="font-medium">Logo (PNG/JPG, ≤10MB)</h2>
         <FileDrop
           label="Pridať logo"
           multiple={false}
           maxPerFileMB={10}
-          accept="image/jpeg"
+          accept="image/png,image/jpeg"
           onUploaded={(urls) => setLogoUrl(urls[0] ?? null)}
         />
         {logoUrl && (
@@ -122,7 +112,7 @@ export default function AdminPage() {
         )}
       </section>
 
-      {/* Carousel */}
+      {/* Carousel – ponecháme len JPG kvôli váhe */}
       <section className="space-y-3">
         <h2 className="font-medium">Carousel obrázky (1–10 JPG, ≤10MB/ks)</h2>
         <FileDrop
@@ -154,69 +144,6 @@ export default function AdminPage() {
         )}
       </section>
 
-      {/* TÉMA */}
-      <section className="space-y-3">
-        <h2 className="font-medium">Téma vzhľadu</h2>
-
-        <div className="space-y-2">
-          <label className="block">
-            <input
-              type="radio"
-              name="theme"
-              value="light"
-              checked={themeMode === 'light'}
-              onChange={() => setThemeMode('light')}
-              className="mr-2"
-            />
-            Light (svetlé pozadie, tmavý text)
-          </label>
-
-          <label className="block">
-            <input
-              type="radio"
-              name="theme"
-              value="dark"
-              checked={themeMode === 'dark'}
-              onChange={() => setThemeMode('dark')}
-              className="mr-2"
-            />
-            Dark (tmavé pozadie, biely text)
-          </label>
-
-          <label className="block">
-            <input
-              type="radio"
-              name="theme"
-              value="custom"
-              checked={themeMode === 'custom'}
-              onChange={() => setThemeMode('custom')}
-              className="mr-2"
-            />
-            Vlastné farby
-          </label>
-        </div>
-
-        {themeMode === 'custom' && (
-          <div className="grid grid-cols-3 gap-2 items-center">
-            <span>Farba pozadia</span>
-            <input
-              type="color"
-              value={bgColor}
-              onChange={(e) => setBgColor(e.target.value)}
-              className="col-span-2 h-10 w-20 p-0 border rounded"
-            />
-
-            <span>Farba textu</span>
-            <input
-              type="color"
-              value={textColor}
-              onChange={(e) => setTextColor(e.target.value)}
-              className="col-span-2 h-10 w-20 p-0 border rounded"
-            />
-          </div>
-        )}
-      </section>
-
       {/* Text */}
       <section className="space-y-2">
         <h2 className="font-medium">Text</h2>
@@ -229,6 +156,63 @@ export default function AdminPage() {
         />
       </section>
 
+      {/* Téma (ak už máš vlastný UI, kľudne nechaj svoj) */}
+      <section className="space-y-2">
+        <h2 className="font-medium">Téma</h2>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="theme"
+              checked={themeMode === 'light'}
+              onChange={() => setThemeMode('light')}
+            />
+            Svetlá
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="theme"
+              checked={themeMode === 'dark'}
+              onChange={() => setThemeMode('dark')}
+            />
+            Tmavá (čierne pozadie)
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="theme"
+              checked={themeMode === 'custom'}
+              onChange={() => setThemeMode('custom')}
+            />
+            Vlastná
+          </label>
+
+          {themeMode === 'custom' && (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-sm">
+                Pozadie
+                <input
+                  type="color"
+                  value={bgColor}
+                  onChange={(e) => setBgColor(e.target.value)}
+                  className="block w-full h-10 p-0 border rounded"
+                />
+              </label>
+              <label className="text-sm">
+                Text
+                <input
+                  type="color"
+                  value={textColor}
+                  onChange={(e) => setTextColor(e.target.value)}
+                  className="block w-full h-10 p-0 border rounded"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+      </section>
+
       <div className="space-y-2">
         <button
           onClick={submit}
@@ -239,9 +223,7 @@ export default function AdminPage() {
         </button>
         {ok && <p className="text-green-700 text-sm">{ok}</p>}
         {err && <p className="text-red-600 text-sm">{err}</p>}
-        <p className="text-xs text-gray-500">
-          Zmeny sa okamžite prejavia – homepage ich číta vždy „no-store“.
-        </p>
+        <p className="text-xs text-gray-500">Zmeny sa prejavia okamžite.</p>
       </div>
     </main>
   );

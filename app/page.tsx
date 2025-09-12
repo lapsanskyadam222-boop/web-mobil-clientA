@@ -1,22 +1,29 @@
-// app/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import Link from 'next/link';
 import Carousel from '@/components/Carousel';
-import type { SiteContent } from '@/lib/types';
+import { SiteContent } from '@/lib/types';
 import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
 
-async function getContent(): Promise<
-  { ok: true; data: SiteContent } | { ok: false; error?: string; status?: number }
-> {
+type Theme =
+  | { mode: 'light' }
+  | { mode: 'dark' }
+  | { mode: 'custom'; bgColor: string; textColor: string };
+
+async function getContent(): Promise<{
+  ok: boolean;
+  data?: SiteContent & { theme?: Theme; updatedAt?: string };
+  error?: string;
+  status?: number;
+}> {
   try {
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
-    const data = (await res.json()) as SiteContent;
-    return { ok: true, data };
+    const json = (await res.json()) as SiteContent & { theme?: Theme; updatedAt?: string };
+    return { ok: true, data: json };
   } catch (e: any) {
     return { ok: false, error: e?.message ?? 'Unknown fetch error' };
   }
@@ -41,22 +48,24 @@ export default async function HomePage() {
   const logoUrl = data.logoUrl ?? null;
   const images = Array.isArray(data.carousel) ? data.carousel : [];
   const text = data.text ?? '';
+  const theme = data.theme ?? { mode: 'light' as const };
 
-  // Výpočet farieb podľa témy
+  // farby z témy
   let bg = '#ffffff';
   let fg = '#111111';
-  const mode = data.theme?.mode ?? 'light';
-
-  if (mode === 'dark') {
+  if (theme.mode === 'dark') {
     bg = '#000000';
     fg = '#ffffff';
-  } else if (mode === 'custom') {
-    bg = data.theme?.bgColor || bg;
-    fg = data.theme?.textColor || fg;
+  } else if (theme.mode === 'custom') {
+    bg = theme.bgColor || '#ffffff';
+    fg = theme.textColor || '#111111';
   }
 
   return (
-    <main className="min-h-dvh antialiased" style={{ background: bg, color: fg }}>
+    <main
+      className="min-h-dvh antialiased"
+      style={{ backgroundColor: bg, color: fg }}
+    >
       <div className="mx-auto max-w-screen-sm p-4 flex flex-col items-center gap-4">
         {/* LOGO */}
         {logoUrl && (
@@ -69,7 +78,7 @@ export default async function HomePage() {
           />
         )}
 
-        {/* CAROUSEL – centrovaný na stred */}
+        {/* CAROUSEL */}
         {images.length > 0 && (
           <div className="w-full flex justify-center">
             <div className="w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
@@ -78,11 +87,11 @@ export default async function HomePage() {
           </div>
         )}
 
-        {/* TEXT */}
+        {/* TEXT – zachová odseky z textarea */}
         {text ? (
           <article
             className="prose text-center"
-            style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }} // zachová odseky \n
+            style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
           >
             {text}
           </article>
