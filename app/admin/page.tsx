@@ -1,187 +1,95 @@
-'use client';
+// app/page.tsx
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-import { useEffect, useState } from 'react';
-import { FileDrop } from '@/components/FileDrop';
+import Link from 'next/link';
+import Carousel from '@/components/Carousel';
 import type { SiteContent } from '@/lib/types';
+import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
 
-type SavePayload = SiteContent;
+async function getContent(): Promise<{ ok: true; data: SiteContent } | { ok: false; error?: string; status?: number }> {
+  try {
+    const base = getBaseUrlServer();
+    const url = `${base}/api/content`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
+    const data = (await res.json()) as SiteContent;
+    return { ok: true, data };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? 'Unknown fetch error' };
+  }
+}
 
-export default function AdminPage() {
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+export default async function HomePage() {
+  const result = await getContent();
 
-  // nový model
-  const [hero, setHero] = useState<string[]>([]);
-  const [heroText, setHeroText] = useState('');
-  const [gallery, setGallery] = useState<string[]>([]);
-  const [bodyText, setBodyText] = useState('');
+  if (!result.ok) {
+    return (
+      <main className="mx-auto max-w-2xl p-6">
+        <h1 className="mb-2 text-xl font-semibold">Načítanie obsahu zlyhalo</h1>
+        <pre className="whitespace-pre-wrap text-xs opacity-60">
+          {result.status ? `HTTP ${result.status}\n` : ''}
+          {result.error ?? ''}
+        </pre>
+      </main>
+    );
+  }
 
-  const [busy, setBusy] = useState(false);
-  const [ok, setOk] = useState('');
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/content', { cache: 'no-store' });
-        if (!res.ok) return;
-        const d = (await res.json()) as SiteContent;
-        setLogoUrl(d.logoUrl ?? null);
-        setHero(Array.isArray(d.hero) ? d.hero : []);
-        setHeroText(d.heroText ?? '');
-        setGallery(Array.isArray(d.gallery) ? d.gallery : []);
-        setBodyText(d.bodyText ?? '');
-      } catch {}
-    })();
-  }, []);
-
-  const limit10 = (arr: string[]) =>
-    Array.from(new Set(arr.filter(Boolean).map(String))).slice(0, 10);
-
-  const removeAt = (setter: (v: string[]) => void, arr: string[], idx: number) =>
-    setter(arr.filter((_, i) => i !== idx));
-
-  const save = async () => {
-    setBusy(true); setOk(''); setErr('');
-
-    try {
-      const payload: SavePayload = {
-        logoUrl,
-        hero: limit10(hero),
-        heroText: heroText ?? '',
-        gallery: limit10(gallery),
-        bodyText: bodyText ?? '',
-      };
-
-      const res = await fetch('/api/save-content', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || 'Ukladanie zlyhalo');
-      }
-      setOk('Zverejnené ✅');
-    } catch (e: any) {
-      setErr(e?.message || 'Ukladanie zlyhalo');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { logoUrl, carousel1, text1, carousel2, text2 } = result.data;
 
   return (
-    <main className="max-w-xl mx-auto py-8 space-y-10">
-      <h1 className="text-xl font-semibold">Admin editor</h1>
-
-      {/* LOGO */}
-      <section className="space-y-3">
-        <h2 className="font-medium">Logo (JPG, ≤10MB)</h2>
-        <FileDrop
-          label="Presuň sem JPG alebo klikni na výber."
-          multiple={false}
-          maxPerFileMB={10}
-          accept="image/jpeg"
-          onUploaded={(urls) => setLogoUrl(urls[0] ?? null)}
-        />
+    <main className="min-h-dvh bg-white text-gray-900 antialiased">
+      <div className="mx-auto max-w-screen-sm p-4 flex flex-col items-center gap-4">
+        {/* LOGO */}
         {logoUrl && (
-          <div className="mt-2">
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt="logo"
+            className="mx-auto w-auto"
+            style={{ height: 'clamp(100px, 22vw, 160px)', display: 'block' }}
+          />
+        )}
+
+        {/* CAROUSEL #1 */}
+        {Array.isArray(carousel1) && carousel1.length > 0 && (
+          <div className="w-full flex justify-center">
+            <div className="w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
+              <Carousel images={carousel1} aspect="4/5" className="w-full" />
+            </div>
+          </div>
+        )}
+
+        {/* TEXT #1 */}
+        {text1 && (
+          <article className="prose text-center" style={{ maxWidth: 'min(92vw, 900px)' }}>
+            {text1}
+          </article>
+        )}
+
+        {/* CAROUSEL #2 */}
+        {Array.isArray(carousel2) && carousel2.length > 0 && (
+          <div className="w-full flex justify-center">
+            <div className="w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
+              <Carousel images={carousel2} aspect="4/5" className="w-full" />
+            </div>
+          </div>
+        )}
+
+        {/* TEXT #2 */}
+        {text2 && (
+          <article className="prose text-center" style={{ maxWidth: 'min(92vw, 900px)' }}>
+            {text2}
+          </article>
+        )}
+
+        {/* CTA */}
+        <div className="mt-8 w-full flex justify-center">
+          <Link href="/rezervacia" aria-label="Rezervácie" className="inline-block active:translate-y-[1px] transition">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logoUrl} alt="logo preview" className="h-16 w-auto" />
-          </div>
-        )}
-      </section>
-
-      {/* CAROUSEL #1 */}
-      <section className="space-y-3">
-        <h2 className="font-medium">Carousel #1 (0–10 JPG, ≤10MB/ks)</h2>
-        <FileDrop
-          label="Presuň sem JPG alebo klikni na výber."
-          multiple
-          maxPerFileMB={10}
-          accept="image/jpeg"
-          onUploaded={(urls) => setHero((prev) => limit10([...prev, ...urls]))}
-        />
-        {hero.length > 0 && (
-          <div className="grid grid-cols-3 gap-3">
-            {hero.map((src, i) => (
-              <div key={src + i} className="relative border rounded p-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={`hero-${i + 1}`} className="w-full h-28 object-contain" />
-                <button
-                  type="button"
-                  className="absolute -top-2 -right-2 bg-black text-white text-xs rounded-full px-2 py-1"
-                  onClick={() => removeAt(setHero, hero, i)}
-                  aria-label={`Odstrániť ${i + 1}`}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <textarea
-          className="w-full border rounded p-2"
-          rows={3}
-          placeholder="Text pod 1. carouselom"
-          value={heroText}
-          onChange={(e) => setHeroText(e.target.value)}
-          maxLength={5000}
-        />
-      </section>
-
-      {/* CAROUSEL #2 */}
-      <section className="space-y-3">
-        <h2 className="font-medium">Carousel #2 (0–10 JPG, ≤10MB/ks)</h2>
-        <FileDrop
-          label="Presuň sem JPG alebo klikni na výber."
-          multiple
-          maxPerFileMB={10}
-          accept="image/jpeg"
-          onUploaded={(urls) => setGallery((prev) => limit10([...prev, ...urls]))}
-        />
-        {gallery.length > 0 && (
-          <div className="grid grid-cols-3 gap-3">
-            {gallery.map((src, i) => (
-              <div key={src + i} className="relative border rounded p-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={`gallery-${i + 1}`} className="w-full h-28 object-contain" />
-                <button
-                  type="button"
-                  className="absolute -top-2 -right-2 bg-black text-white text-xs rounded-full px-2 py-1"
-                  onClick={() => removeAt(setGallery, gallery, i)}
-                  aria-label={`Odstrániť ${i + 1}`}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <textarea
-          className="w-full border rounded p-2"
-          rows={3}
-          placeholder="Text pod 2. carouselom"
-          value={bodyText}
-          onChange={(e) => setBodyText(e.target.value)}
-          maxLength={5000}
-        />
-      </section>
-
-      {/* AKCIE */}
-      <div className="space-y-2">
-        <button
-          onClick={save}
-          disabled={busy}
-          className="bg-black text-white rounded px-4 py-2 disabled:opacity-50"
-        >
-          {busy ? 'Ukladám…' : 'Zverejniť'}
-        </button>
-        {ok && <p className="text-green-700 text-sm">{ok}</p>}
-        {err && <p className="text-red-600 text-sm">{err}</p>}
-        <p className="text-xs text-gray-500">
-          Zmeny sa prejavia okamžite – homepage číta obsah s <code>no-store</code>.
-        </p>
+            <img src="/cta/rezervacie-btn.svg" alt="Rezervácie" className="h-16 w-auto select-none" draggable={false} />
+          </Link>
+        </div>
       </div>
     </main>
   );
