@@ -6,7 +6,6 @@ export const metadata = {
   description: 'Jednoduchý mobilný web s logom, carouselom a textom',
 };
 
-// Next.js vyžaduje viewport v samostatnom exporte (nie v metadata)
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -16,13 +15,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="sk">
       <head>
-        {/* Google Fonts: Manrope */}
+        {/* Google Fonts: Manrope (Regular 400, ExtraBold 800) */}
         <link
           href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;800&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-dvh bg-white text-gray-900 antialiased font-sans">
+      {/* ⚠️ Odstránené bg-white a text-gray-900, aby farba z /api/content prekryla celý viewport */}
+      <body className="min-h-dvh antialiased font-sans">
         <div className="mx-auto max-w-screen-sm p-4">{children}</div>
       </body>
     </html>

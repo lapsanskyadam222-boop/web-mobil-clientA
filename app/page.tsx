@@ -50,7 +50,7 @@ export default async function HomePage() {
   const text = data.text ?? '';
   const theme = data.theme ?? { mode: 'light' as const };
 
-  // farby z témy
+  // farby z témy (FULL-BLEED na celé <main>)
   let bg = '#ffffff';
   let fg = '#111111';
   if (theme.mode === 'dark') {
@@ -87,7 +87,7 @@ export default async function HomePage() {
           </div>
         )}
 
-        {/* TEXT – zachová odseky z textarea */}
+        {/* TEXT – zachovať odseky z textarea */}
         {text ? (
           <article
             className="prose text-center"
