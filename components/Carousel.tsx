@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Head from 'next/head';
 
 type CarouselProps = {
   images: string[];
@@ -40,6 +41,9 @@ export default function Carousel({
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const widthRef = React.useRef(1);
 
+  // trackujeme, ktoré snímky už sú načítané (aby sme vedeli ukázať skeleton iba keď treba)
+  const [loaded, setLoaded] = React.useState<Record<number, boolean>>({});
+
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -50,19 +54,18 @@ export default function Carousel({
     return () => ro.disconnect();
   }, []);
 
-  // Preload susedných snímok pre rýchlejšie prepnutie
+  // Preload susedných snímok (nielen ±1, ale aj ±2) pre rýchlejší prechod
   React.useEffect(() => {
     if (!total) return;
-    const preload = (i: number) => {
-      if (i < 0 || i >= total) return;
+    const want = [index - 2, index - 1, index + 1, index + 2];
+    for (const i of want) {
+      if (i < 0 || i >= total) continue;
       const src = images[i];
-      if (!src) return;
+      if (!src) continue;
       const img = new Image();
       img.decoding = 'async';
       img.src = src;
-    };
-    preload(index + 1);
-    preload(index - 1);
+    }
   }, [index, images, total]);
 
   const begin = (e: React.PointerEvent) => {
@@ -76,7 +79,7 @@ export default function Carousel({
   const move = (e: React.PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - startX.current;
-    if (Math.abs(dx) < 4) return; // citlivejší prah na zachytenie horizontálneho pohybu
+    if (Math.abs(dx) < 4) return; // citlivejší prah
     e.preventDefault();
     setDragX(dx);
   };
@@ -86,10 +89,7 @@ export default function Carousel({
     const delta = dragX / Math.max(1, widthRef.current);
     let next = index;
 
-    // znížený prah na prelistovanie
     const THRESH = 0.12;
-
-    // jednoduchý „flick“: ak gesto bolo rýchle, povoľ menší posun
     const dt = Math.max(1, performance.now() - startT.current); // ms
     const speedPxPerMs = Math.abs(dragX) / dt;
     const fast = speedPxPerMs > 0.5;
@@ -107,8 +107,27 @@ export default function Carousel({
   const tx = -(index * 100) + (dragX / Math.max(1, widthRef.current)) * 100;
   const padTop = aspectToPaddingPercent(aspect);
 
+  // Pomocníci: odkazy na „najbližšie“ snímky pre <link rel="preload">
+  const toPreload: string[] = [];
+  const pushPreload = (i: number) => {
+    if (i >= 0 && i < total && images[i]) toPreload.push(images[i]);
+  };
+  pushPreload(index + 1);
+  pushPreload(index - 1);
+  pushPreload(index + 2);
+  pushPreload(index - 2);
+
   return (
     <section className={className}>
+      {/* Preload najbližších obrázkov na úrovni <head> – prehliadač ich začne ťahať skôr */}
+      {toPreload.length > 0 && (
+        <Head>
+          {toPreload.map((href, i) => (
+            <link key={i} rel="preload" as="image" href={href} />
+          ))}
+        </Head>
+      )}
+
       {/* OUTER: desktop = centrovaný s maxWidth; mobile = full-bleed cez media query */}
       <div
         className="carousel-outer"
@@ -131,25 +150,34 @@ export default function Carousel({
             onPointerLeave={end}
             aria-label="carousel-track"
           >
-            {images.map((src, i) => (
-              <div key={i} className="slide">
-                <div className="ratio" style={{ paddingTop: `${padTop}%` }} aria-hidden="true" />
-                <div className="imgwrap">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={src}
-                    alt={`slide-${i + 1}`}
-                    draggable={false}
-                    loading={i === 0 ? 'eager' : 'lazy'}
-                    // pomôcky pre rýchlejšie zobrazenie
-                    decoding="async"
-                    // @ts-expect-error modern browsers support this attribute
-                    fetchpriority={i === 0 ? 'high' : 'auto'}
-                    sizes="(max-width: 1023px) 100vw, 720px"
-                  />
+            {images.map((src, i) => {
+              const isCurrent = i === index;
+              const isNextLikely = i === index + 1 || i === index - 1;
+
+              return (
+                <div key={i} className="slide">
+                  <div className="ratio" style={{ paddingTop: `${padTop}%` }} aria-hidden="true" />
+                  <div className="imgwrap">
+                    {/* skeleton/placeholder kým sa obrázok nenačíta */}
+                    {!loaded[i] && <div className="skeleton" />}
+
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={src}
+                      alt={`slide-${i + 1}`}
+                      draggable={false}
+                      loading={i === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      // @ts-expect-error: modern browsers support this attribute
+                      fetchpriority={isCurrent || isNextLikely ? 'high' : 'auto'}
+                      sizes="(max-width: 1023px) 100vw, 720px"
+                      onLoad={() => setLoaded((m) => (m[i] ? m : { ...m, [i]: true }))}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -183,6 +211,17 @@ export default function Carousel({
         .ratio { width: 100%; }
         .imgwrap { position: absolute; inset: 0; }
         .imgwrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .skeleton {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(90deg, #eee 0%, #f5f5f5 50%, #eee 100%);
+          background-size: 200% 100%;
+          animation: shimmer 1.2s infinite linear;
+        }
+        @keyframes shimmer {
+          0%   { background-position: 0% 0; }
+          100% { background-position: -200% 0; }
+        }
 
         /* MOBILE (<=1023px): full-bleed + úzky vnútorný gutter */
         @media (max-width: 1023px) {
