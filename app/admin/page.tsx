@@ -84,7 +84,7 @@ export default function AdminPage() {
       <section className="space-y-3">
         <h2 className="font-medium">Logo (JPG, ≤10MB)</h2>
         <FileDrop
-          label="Presuň sem JPG alebo klikni na výber."
+          label="Pridať logo"
           multiple={false}
           maxPerFileMB={10}
           accept="image/jpeg"
@@ -105,7 +105,7 @@ export default function AdminPage() {
       <section className="space-y-3">
         <h2 className="font-medium">Carousel obrázky (1–10 JPG, ≤10MB/ks)</h2>
         <FileDrop
-          label="Presuň sem JPG alebo klikni na výber."
+          label="Pridať fotky"
           multiple
           maxPerFileMB={10}
           accept="image/jpeg"
@@ -161,7 +161,7 @@ export default function AdminPage() {
         {ok && <p className="text-green-700 text-sm">{ok}</p>}
         {err && <p className="text-red-600 text-sm">{err}</p>}
         <p className="text-xs text-gray-500">
-          Zmeny sa okamžite prejavia – homepage ich číta vždy „no‑store“.
+          Zmeny sa okamžite prejavia – homepage ich číta vždy „no-store“.
         </p>
       </div>
     </main>
