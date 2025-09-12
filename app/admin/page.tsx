@@ -2,31 +2,45 @@
 
 import { useEffect, useState } from 'react';
 import { FileDrop } from '@/components/FileDrop';
+import type { SiteContent, ThemeConfig } from '@/lib/types';
 
 type SavePayload = {
   logoUrl: string | null;
-  carousel: string[]; // presne stringové URL
+  carousel: string[];
   text: string;
+  theme: ThemeConfig;
 };
 
 export default function AdminPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [carousel, setCarousel] = useState<string[]>([]);
   const [text, setText] = useState('');
+
+  // TÉMA (default = light)
+  const [themeMode, setThemeMode] = useState<ThemeConfig['mode']>('light');
+  const [bgColor, setBgColor] = useState('#ffffff');
+  const [textColor, setTextColor] = useState('#111111');
+
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState<string>('');
   const [err, setErr] = useState<string>('');
 
-  // (nepovinné) – ak chceš, môžeš si načítať existujúci obsah a predvyplniť formulár
+  // Načítanie existujúceho obsahu (ak je)
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch('/api/content', { cache: 'no-store' });
         if (!res.ok) return;
-        const data = await res.json();
+        const data: SiteContent = await res.json();
+
         setLogoUrl(data.logoUrl ?? null);
         setCarousel(Array.isArray(data.carousel) ? data.carousel : []);
         setText(data.text ?? '');
+
+        const th = data.theme;
+        if (th?.mode) setThemeMode(th.mode);
+        if (th?.bgColor) setBgColor(th.bgColor);
+        if (th?.textColor) setTextColor(th.textColor);
       } catch {}
     })();
   }, []);
@@ -40,7 +54,7 @@ export default function AdminPage() {
     setOk('');
     setErr('');
 
-    // Zod na serveri vyžaduje: carousel min. 1 a max. 10
+    // carousel min. 1 a max. 10
     if (carousel.length < 1) {
       setBusy(false);
       setErr('Pridaj aspoň jeden obrázok do carouselu.');
@@ -52,10 +66,21 @@ export default function AdminPage() {
       return;
     }
 
+    // poskladať theme objekt
+    const theme: ThemeConfig =
+      themeMode === 'custom'
+        ? {
+            mode: 'custom',
+            bgColor: bgColor || '#ffffff',
+            textColor: textColor || '#111111',
+          }
+        : { mode: themeMode };
+
     const payload: SavePayload = {
       logoUrl: logoUrl ?? null,
-      carousel: [...carousel], // posielame ČISTÉ STRINGY
+      carousel: [...carousel],
       text: text ?? '',
+      theme,
     };
 
     try {
@@ -82,16 +107,12 @@ export default function AdminPage() {
 
       {/* Logo */}
       <section className="space-y-3">
-        <h2 className="font-medium">Logo (JPG, ≤10MB)</h2>
         <FileDrop
           label="Pridať logo"
           multiple={false}
           maxPerFileMB={10}
           accept="image/jpeg"
-          onUploaded={(urls) => {
-            // vezmeme prvé URL
-            setLogoUrl(urls[0] ?? null);
-          }}
+          onUploaded={(urls) => setLogoUrl(urls[0] ?? null)}
         />
         {logoUrl && (
           <div className="mt-2">
@@ -109,14 +130,9 @@ export default function AdminPage() {
           multiple
           maxPerFileMB={10}
           accept="image/jpeg"
-          onUploaded={(urls) => {
-            // PRIDAŤ do poľa stringových URL (nie objekty)
-            setCarousel((prev) => {
-              const next = [...prev, ...urls];
-              // limit 10 kusov
-              return next.slice(0, 10);
-            });
-          }}
+          onUploaded={(urls) =>
+            setCarousel((prev) => [...prev, ...urls].slice(0, 10))
+          }
         />
         {carousel.length > 0 && (
           <div className="grid grid-cols-3 gap-3">
@@ -134,6 +150,69 @@ export default function AdminPage() {
                 </button>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* TÉMA */}
+      <section className="space-y-3">
+        <h2 className="font-medium">Téma vzhľadu</h2>
+
+        <div className="space-y-2">
+          <label className="block">
+            <input
+              type="radio"
+              name="theme"
+              value="light"
+              checked={themeMode === 'light'}
+              onChange={() => setThemeMode('light')}
+              className="mr-2"
+            />
+            Light (svetlé pozadie, tmavý text)
+          </label>
+
+          <label className="block">
+            <input
+              type="radio"
+              name="theme"
+              value="dark"
+              checked={themeMode === 'dark'}
+              onChange={() => setThemeMode('dark')}
+              className="mr-2"
+            />
+            Dark (tmavé pozadie, biely text)
+          </label>
+
+          <label className="block">
+            <input
+              type="radio"
+              name="theme"
+              value="custom"
+              checked={themeMode === 'custom'}
+              onChange={() => setThemeMode('custom')}
+              className="mr-2"
+            />
+            Vlastné farby
+          </label>
+        </div>
+
+        {themeMode === 'custom' && (
+          <div className="grid grid-cols-3 gap-2 items-center">
+            <span>Farba pozadia</span>
+            <input
+              type="color"
+              value={bgColor}
+              onChange={(e) => setBgColor(e.target.value)}
+              className="col-span-2 h-10 w-20 p-0 border rounded"
+            />
+
+            <span>Farba textu</span>
+            <input
+              type="color"
+              value={textColor}
+              onChange={(e) => setTextColor(e.target.value)}
+              className="col-span-2 h-10 w-20 p-0 border rounded"
+            />
           </div>
         )}
       </section>
