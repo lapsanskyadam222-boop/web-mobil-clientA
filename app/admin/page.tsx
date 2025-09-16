@@ -7,11 +7,6 @@ type SavePayload = {
   logoUrl: string | null;
   carousel: string[];
   text: string;
-  theme?: {
-    mode: 'light' | 'dark' | 'custom';
-    bgColor?: string;
-    textColor?: string;
-  };
 };
 
 export default function AdminPage() {
@@ -22,11 +17,6 @@ export default function AdminPage() {
   const [ok, setOk] = useState<string>('');
   const [err, setErr] = useState<string>('');
 
-  // téma (predpoklad: toto tu už máš; nechávam kompatibilitu)
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'custom'>('light');
-  const [bgColor, setBgColor] = useState('#ffffff');
-  const [textColor, setTextColor] = useState('#111111');
-
   useEffect(() => {
     (async () => {
       try {
@@ -36,19 +26,12 @@ export default function AdminPage() {
         setLogoUrl(data.logoUrl ?? null);
         setCarousel(Array.isArray(data.carousel) ? data.carousel : []);
         setText(data.text ?? '');
-
-        const t = data.theme ?? { mode: 'light' };
-        setThemeMode(t.mode);
-        if (t.mode === 'custom') {
-          if (t.bgColor) setBgColor(t.bgColor);
-          if (t.textColor) setTextColor(t.textColor);
-        }
       } catch {}
     })();
   }, []);
 
   const removeCarouselAt = (idx: number) => {
-    setCarousel((prev) => prev.filter((_, i) => i !== idx));
+    setCarousel(prev => prev.filter((_, i) => i !== idx));
   };
 
   const submit = async () => {
@@ -56,6 +39,11 @@ export default function AdminPage() {
     setOk('');
     setErr('');
 
+    if (carousel.length < 1) {
+      setBusy(false);
+      setErr('Pridaj aspoň jeden obrázok do carouselu.');
+      return;
+    }
     if (carousel.length > 10) {
       setBusy(false);
       setErr('Maximálne 10 obrázkov v carousele.');
@@ -66,10 +54,6 @@ export default function AdminPage() {
       logoUrl: logoUrl ?? null,
       carousel: [...carousel],
       text: text ?? '',
-      theme:
-        themeMode === 'custom'
-          ? { mode: 'custom', bgColor, textColor }
-          : { mode: themeMode },
     };
 
     try {
@@ -94,7 +78,7 @@ export default function AdminPage() {
     <main className="max-w-xl mx-auto py-8 space-y-8">
       <h1 className="text-xl font-semibold">Admin editor</h1>
 
-      {/* Logo (povolíme PNG aj JPG) */}
+      {/* Logo */}
       <section className="space-y-3">
         <h2 className="font-medium">Logo (PNG/JPG, ≤10MB)</h2>
         <FileDrop
@@ -102,7 +86,9 @@ export default function AdminPage() {
           multiple={false}
           maxPerFileMB={10}
           accept="image/png,image/jpeg"
-          onUploaded={(urls) => setLogoUrl(urls[0] ?? null)}
+          onUploaded={(urls) => {
+            setLogoUrl(urls[0] ?? null);
+          }}
         />
         {logoUrl && (
           <div className="mt-2">
@@ -112,7 +98,7 @@ export default function AdminPage() {
         )}
       </section>
 
-      {/* Carousel – ponecháme len JPG kvôli váhe */}
+      {/* Carousel */}
       <section className="space-y-3">
         <h2 className="font-medium">Carousel obrázky (1–10 JPG, ≤10MB/ks)</h2>
         <FileDrop
@@ -120,9 +106,12 @@ export default function AdminPage() {
           multiple
           maxPerFileMB={10}
           accept="image/jpeg"
-          onUploaded={(urls) =>
-            setCarousel((prev) => [...prev, ...urls].slice(0, 10))
-          }
+          onUploaded={(urls) => {
+            setCarousel((prev) => {
+              const next = [...prev, ...urls];
+              return next.slice(0, 10);
+            });
+          }}
         />
         {carousel.length > 0 && (
           <div className="grid grid-cols-3 gap-3">
@@ -156,63 +145,6 @@ export default function AdminPage() {
         />
       </section>
 
-      {/* Téma (ak už máš vlastný UI, kľudne nechaj svoj) */}
-      <section className="space-y-2">
-        <h2 className="font-medium">Téma</h2>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="theme"
-              checked={themeMode === 'light'}
-              onChange={() => setThemeMode('light')}
-            />
-            Svetlá
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="theme"
-              checked={themeMode === 'dark'}
-              onChange={() => setThemeMode('dark')}
-            />
-            Tmavá (čierne pozadie)
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="theme"
-              checked={themeMode === 'custom'}
-              onChange={() => setThemeMode('custom')}
-            />
-            Vlastná
-          </label>
-
-          {themeMode === 'custom' && (
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-sm">
-                Pozadie
-                <input
-                  type="color"
-                  value={bgColor}
-                  onChange={(e) => setBgColor(e.target.value)}
-                  className="block w-full h-10 p-0 border rounded"
-                />
-              </label>
-              <label className="text-sm">
-                Text
-                <input
-                  type="color"
-                  value={textColor}
-                  onChange={(e) => setTextColor(e.target.value)}
-                  className="block w-full h-10 p-0 border rounded"
-                />
-              </label>
-            </div>
-          )}
-        </div>
-      </section>
-
       <div className="space-y-2">
         <button
           onClick={submit}
@@ -223,7 +155,9 @@ export default function AdminPage() {
         </button>
         {ok && <p className="text-green-700 text-sm">{ok}</p>}
         {err && <p className="text-red-600 text-sm">{err}</p>}
-        <p className="text-xs text-gray-500">Zmeny sa prejavia okamžite.</p>
+        <p className="text-xs text-gray-500">
+          Zmeny sa okamžite prejavia – homepage ich číta vždy „no-store“.
+        </p>
       </div>
     </main>
   );
