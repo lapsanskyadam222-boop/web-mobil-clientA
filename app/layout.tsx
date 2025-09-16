@@ -15,15 +15,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="sk">
       <head>
-        {/* Google Fonts: Manrope (Regular 400, ExtraBold 800) */}
+        {/* Google Fonts: Manrope */}
         <link
           href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;800&display=swap"
           rel="stylesheet"
         />
       </head>
-      {/* ⚠️ Odstránené bg-white a text-gray-900, aby farba z /api/content prekryla celý viewport */}
+      {/* Z tela dáme preč bg-white + wrapper.
+          Stránky si už samé riešia vnútorné rozloženie */}
       <body className="min-h-dvh antialiased font-sans">
-        <div className="mx-auto max-w-screen-sm p-4">{children}</div>
+        {children}
       </body>
     </html>
   );
