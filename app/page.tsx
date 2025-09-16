@@ -50,7 +50,7 @@ export default async function HomePage() {
   const text = data.text ?? '';
   const theme = data.theme ?? { mode: 'light' as const };
 
-  // farby z témy (FULL-BLEED na celé <main>)
+  // farby z témy
   let bg = '#ffffff';
   let fg = '#111111';
   if (theme.mode === 'dark') {
@@ -62,10 +62,7 @@ export default async function HomePage() {
   }
 
   return (
-    <main
-      className="min-h-dvh antialiased"
-      style={{ backgroundColor: bg, color: fg }}
-    >
+    <main className="min-h-dvh antialiased" style={{ backgroundColor: bg, color: fg }}>
       <div className="mx-auto max-w-screen-sm p-4 flex flex-col items-center gap-4">
         {/* LOGO */}
         {logoUrl && (
@@ -87,14 +84,13 @@ export default async function HomePage() {
           </div>
         )}
 
-        {/* TEXT – zachovať odseky z textarea */}
+        {/* TEXT – render HTML z admina */}
         {text ? (
           <article
             className="prose text-center"
-            style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
-          >
-            {text}
-          </article>
+            style={{ maxWidth: 'min(92vw, 900px)' }}
+            dangerouslySetInnerHTML={{ __html: text }}
+          />
         ) : (
           <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
         )}

@@ -1,17 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileDrop } from '@/components/FileDrop';
 
 type SavePayload = {
   logoUrl: string | null;
   carousel: string[];
-  text: string;
-  theme?: {
-    mode: 'light' | 'dark' | 'custom';
-    bgColor?: string;
-    textColor?: string;
-  };
+  text: string; // HTML povolené
 };
 
 export default function AdminPage() {
@@ -22,10 +17,8 @@ export default function AdminPage() {
   const [ok, setOk] = useState<string>('');
   const [err, setErr] = useState<string>('');
 
-  // téma (predpoklad: toto tu už máš; nechávam kompatibilitu)
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'custom'>('light');
-  const [bgColor, setBgColor] = useState('#ffffff');
-  const [textColor, setTextColor] = useState('#111111');
+  // textarea ref kvôli práci s výberom
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -36,20 +29,66 @@ export default function AdminPage() {
         setLogoUrl(data.logoUrl ?? null);
         setCarousel(Array.isArray(data.carousel) ? data.carousel : []);
         setText(data.text ?? '');
-
-        const t = data.theme ?? { mode: 'light' };
-        setThemeMode(t.mode);
-        if (t.mode === 'custom') {
-          if (t.bgColor) setBgColor(t.bgColor);
-          if (t.textColor) setTextColor(t.textColor);
-        }
       } catch {}
     })();
   }, []);
 
   const removeCarouselAt = (idx: number) => {
-    setCarousel((prev) => prev.filter((_, i) => i !== idx));
+    setCarousel(prev => prev.filter((_, i) => i !== idx));
   };
+
+  // --- Mini editor: zabalí výber do značiek ---
+  function wrapSelection(tagStart: string, tagEnd: string) {
+    const ta = taRef.current;
+    if (!ta) return;
+    const { selectionStart, selectionEnd, value } = ta;
+
+    const hasSelection = selectionStart !== null && selectionEnd !== null && selectionStart !== selectionEnd;
+
+    if (!hasSelection) {
+      // vlož prázdny pár a kurzor posuň medzi ne
+      const pre = value.slice(0, selectionStart ?? 0);
+      const post = value.slice(selectionEnd ?? 0);
+      const next = `${pre}${tagStart}${tagEnd}${post}`;
+      setText(next);
+      // posun kurzor medzi tagy po rendri
+      requestAnimationFrame(() => {
+        if (!taRef.current) return;
+        const pos = (selectionStart ?? 0) + tagStart.length;
+        taRef.current.selectionStart = taRef.current.selectionEnd = pos;
+        taRef.current.focus();
+      });
+      return;
+    }
+
+    const start = selectionStart!;
+    const end = selectionEnd!;
+    const before = value.slice(0, start);
+    const middle = value.slice(start, end);
+    const after = value.slice(end);
+    const next = `${before}${tagStart}${middle}${tagEnd}${after}`;
+    setText(next);
+
+    requestAnimationFrame(() => {
+      if (!taRef.current) return;
+      // vyber zachováme na pôvodnom strede, posunieme o dĺžku tagStart
+      const s = start + tagStart.length;
+      const e = s + middle.length;
+      taRef.current.selectionStart = s;
+      taRef.current.selectionEnd = e;
+      taRef.current.focus();
+    });
+  }
+
+  function makeBold() {
+    // <strong>…</strong> = hrubé (Manrope 800 sa použije vďaka fontu)
+    wrapSelection('<strong>', '</strong>');
+  }
+
+  function makeRegular() {
+    // tenké = Regular 400 (explicitne štýlom)
+    wrapSelection('<span style="font-weight:400">', '</span>');
+  }
 
   const submit = async () => {
     setBusy(true);
@@ -66,10 +105,6 @@ export default function AdminPage() {
       logoUrl: logoUrl ?? null,
       carousel: [...carousel],
       text: text ?? '',
-      theme:
-        themeMode === 'custom'
-          ? { mode: 'custom', bgColor, textColor }
-          : { mode: themeMode },
     };
 
     try {
@@ -94,7 +129,7 @@ export default function AdminPage() {
     <main className="max-w-xl mx-auto py-8 space-y-8">
       <h1 className="text-xl font-semibold">Admin editor</h1>
 
-      {/* Logo (povolíme PNG aj JPG) */}
+      {/* Logo */}
       <section className="space-y-3">
         <h2 className="font-medium">Logo (PNG/JPG, ≤10MB)</h2>
         <FileDrop
@@ -112,17 +147,15 @@ export default function AdminPage() {
         )}
       </section>
 
-      {/* Carousel – ponecháme len JPG kvôli váhe */}
+      {/* Carousel */}
       <section className="space-y-3">
-        <h2 className="font-medium">Carousel obrázky (1–10 JPG, ≤10MB/ks)</h2>
+        <h2 className="font-medium">Carousel obrázky (0–10 JPG, ≤10MB/ks)</h2>
         <FileDrop
           label="Pridať fotky"
           multiple
           maxPerFileMB={10}
           accept="image/jpeg"
-          onUploaded={(urls) =>
-            setCarousel((prev) => [...prev, ...urls].slice(0, 10))
-          }
+          onUploaded={(urls) => setCarousel(prev => [...prev, ...urls].slice(0, 10))}
         />
         {carousel.length > 0 && (
           <div className="grid grid-cols-3 gap-3">
@@ -144,73 +177,41 @@ export default function AdminPage() {
         )}
       </section>
 
-      {/* Text */}
+      {/* Text + mini-toolbar */}
       <section className="space-y-2">
-        <h2 className="font-medium">Text</h2>
+        <h2 className="font-medium">Text (s formátovaním)</h2>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={makeBold}
+            className="px-2 py-1 border rounded text-sm font-bold"
+            title="Hrubé (B)"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            onClick={makeRegular}
+            className="px-2 py-1 border rounded text-sm"
+            title="Tenké (Regular 400)"
+            style={{ fontWeight: 400 }}
+          >
+            Regular
+          </button>
+          <span className="text-xs opacity-60 ml-2">
+            Vyber text v poli a klikni na tlačidlo.
+          </span>
+        </div>
+
         <textarea
+          ref={taRef}
           className="w-full border rounded p-2"
-          rows={3}
+          rows={6}
           value={text}
           onChange={(e) => setText(e.target.value)}
           maxLength={5000}
         />
-      </section>
-
-      {/* Téma (ak už máš vlastný UI, kľudne nechaj svoj) */}
-      <section className="space-y-2">
-        <h2 className="font-medium">Téma</h2>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="theme"
-              checked={themeMode === 'light'}
-              onChange={() => setThemeMode('light')}
-            />
-            Svetlá
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="theme"
-              checked={themeMode === 'dark'}
-              onChange={() => setThemeMode('dark')}
-            />
-            Tmavá (čierne pozadie)
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="theme"
-              checked={themeMode === 'custom'}
-              onChange={() => setThemeMode('custom')}
-            />
-            Vlastná
-          </label>
-
-          {themeMode === 'custom' && (
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-sm">
-                Pozadie
-                <input
-                  type="color"
-                  value={bgColor}
-                  onChange={(e) => setBgColor(e.target.value)}
-                  className="block w-full h-10 p-0 border rounded"
-                />
-              </label>
-              <label className="text-sm">
-                Text
-                <input
-                  type="color"
-                  value={textColor}
-                  onChange={(e) => setTextColor(e.target.value)}
-                  className="block w-full h-10 p-0 border rounded"
-                />
-              </label>
-            </div>
-          )}
-        </div>
       </section>
 
       <div className="space-y-2">
@@ -223,7 +224,7 @@ export default function AdminPage() {
         </button>
         {ok && <p className="text-green-700 text-sm">{ok}</p>}
         {err && <p className="text-red-600 text-sm">{err}</p>}
-        <p className="text-xs text-gray-500">Zmeny sa prejavia okamžite.</p>
+        <p className="text-xs text-gray-500">Zmeny sa okamžite prejavia – homepage ich číta vždy „no-store“.</p>
       </div>
     </main>
   );
