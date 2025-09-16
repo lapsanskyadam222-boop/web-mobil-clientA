@@ -21,10 +21,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
       </head>
-      {/* Z tela dáme preč bg-white + wrapper.
-          Stránky si už samé riešia vnútorné rozloženie */}
+
+      {/* POZOR: žiadne bg-white ani pevná farba textu.
+         Farbu pozadia/textu nastavujú samotné stránky (napr. Home)
+         a tu len centrovalo/zarovnávame obsah. */}
       <body className="min-h-dvh antialiased font-sans">
-        {children}
+        <div className="mx-auto w-full max-w-screen-sm p-4">
+          {children}
+        </div>
       </body>
     </html>
   );

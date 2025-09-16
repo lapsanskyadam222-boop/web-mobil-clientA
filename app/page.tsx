@@ -50,7 +50,7 @@ export default async function HomePage() {
   const text = data.text ?? '';
   const theme = data.theme ?? { mode: 'light' as const };
 
-  // farby z témy (FULL-BLEED na celé <main>)
+  // farby z témy (platí pre CELÚ stránku – teda aj "rámik" okolo obsahu)
   let bg = '#ffffff';
   let fg = '#111111';
   if (theme.mode === 'dark') {
@@ -62,11 +62,10 @@ export default async function HomePage() {
   }
 
   return (
-    <main
-      className="min-h-dvh antialiased"
-      style={{ backgroundColor: bg, color: fg }}
-    >
-      <div className="mx-auto max-w-screen-sm p-4 flex flex-col items-center gap-4">
+    // Pozadie nastavíme na <main>, ktoré je pod globálnym centrovaním.
+    // Rámik = voľný priestor okolo obsahu v layoute → má rovnakú farbu (inherit).
+    <main className="min-h-dvh antialiased" style={{ backgroundColor: bg, color: fg }}>
+      <section className="flex flex-col items-center gap-4">
         {/* LOGO */}
         {logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -87,14 +86,13 @@ export default async function HomePage() {
           </div>
         )}
 
-        {/* TEXT – zachovať odseky z textarea */}
+        {/* TEXT – zachová odseky z textarea */}
         {text ? (
           <article
             className="prose text-center"
             style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
-          >
-            {text}
-          </article>
+            dangerouslySetInnerHTML={{ __html: text }}
+          />
         ) : (
           <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
         )}
@@ -106,7 +104,7 @@ export default async function HomePage() {
             <img src="/cta/rezervacie-btn.svg" alt="Rezervácie" className="h-16 w-auto select-none" draggable={false} />
           </Link>
         </div>
-      </div>
+      </section>
     </main>
   );
 }
