@@ -50,7 +50,7 @@ export default async function HomePage() {
   const text = data.text ?? '';
   const theme = data.theme ?? { mode: 'light' as const };
 
-  // farby z témy (platí pre CELÚ stránku – teda aj "rámik" okolo obsahu)
+  // farby z témy
   let bg = '#ffffff';
   let fg = '#111111';
   if (theme.mode === 'dark') {
@@ -62,49 +62,54 @@ export default async function HomePage() {
   }
 
   return (
-    // Pozadie nastavíme na <main>, ktoré je pod globálnym centrovaním.
-    // Rámik = voľný priestor okolo obsahu v layoute → má rovnakú farbu (inherit).
-    <main className="min-h-dvh antialiased" style={{ backgroundColor: bg, color: fg }}>
-      <section className="flex flex-col items-center gap-4">
-        {/* LOGO */}
-        {logoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logoUrl}
-            alt="logo"
-            className="mx-auto w-auto"
-            style={{ height: 'clamp(100px, 22vw, 160px)', display: 'block' }}
-          />
-        )}
+    <>
+      {/* Tu globálne nastavíme CSS premenné pre celú stránku (html/body). */}
+      <style>{`:root{--page-bg:${bg};--page-fg:${fg};}`}</style>
 
-        {/* CAROUSEL */}
-        {images.length > 0 && (
-          <div className="w-full flex justify-center">
-            <div className="w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
-              <Carousel images={images} aspect="4/5" className="w-full" />
+      {/* Obsah – layout sa postará o rámik/centrovanie, farby už prídu z body */}
+      <main className="min-h-dvh antialiased">
+        <section className="flex flex-col items-center gap-4">
+          {/* LOGO */}
+          {logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt="logo"
+              className="mx-auto w-auto"
+              style={{ height: 'clamp(100px, 22vw, 160px)', display: 'block' }}
+            />
+          )}
+
+          {/* CAROUSEL */}
+          {images.length > 0 && (
+            <div className="w-full flex justify-center">
+              <div className="w-full" style={{ maxWidth: 'min(92vw, 900px)' }}>
+                <Carousel images={images} aspect="4/5" className="w-full" />
+              </div>
             </div>
+          )}
+
+          {/* TEXT – zachová odseky, ak vkladáš plain text */}
+          {text ? (
+            <article
+              className="prose text-center"
+              style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
+            >
+              {text}
+            </article>
+          ) : (
+            <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
+          )}
+
+          {/* CTA */}
+          <div className="mt-8 w-full flex justify-center">
+            <Link href="/rezervacia" aria-label="Rezervácie" className="inline-block active:translate-y-[1px] transition">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/cta/rezervacie-btn.svg" alt="Rezervácie" className="h-16 w-auto select-none" draggable={false} />
+            </Link>
           </div>
-        )}
-
-        {/* TEXT – zachová odseky z textarea */}
-        {text ? (
-          <article
-            className="prose text-center"
-            style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
-            dangerouslySetInnerHTML={{ __html: text }}
-          />
-        ) : (
-          <p className="text-sm opacity-60">Zatiaľ žiadny text.</p>
-        )}
-
-        {/* CTA */}
-        <div className="mt-8 w-full flex justify-center">
-          <Link href="/rezervacia" aria-label="Rezervácie" className="inline-block active:translate-y-[1px] transition">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/cta/rezervacie-btn.svg" alt="Rezervácie" className="h-16 w-auto select-none" draggable={false} />
-          </Link>
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </>
   );
 }
