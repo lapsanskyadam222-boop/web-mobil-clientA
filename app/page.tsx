@@ -105,7 +105,12 @@ export default async function HomePage() {
           <div className="mt-8 w-full flex justify-center">
             <Link href="/rezervacia" aria-label="Rezervácie" className="inline-block active:translate-y-[1px] transition">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/cta/rezervacie-btn.svg" alt="Rezervácie" className="h-16 w-auto select-none" draggable={false} />
+              <img
+                src="/cta/rezervaciebtn.svg?v=1"
+                alt="Rezervácie"
+                className="h-16 w-auto select-none"
+                draggable={false}
+              />
             </Link>
           </div>
         </section>
