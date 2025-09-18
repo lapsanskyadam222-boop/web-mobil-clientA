@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Turnstile from "react-turnstile";
 
 type Slot = { id: string; date: string; time: string; locked?: boolean; booked?: boolean };
 
@@ -133,16 +134,35 @@ function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] })
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
+  // --- ochrany ---
+  const [hp, setHp] = useState("");           // honeypot (skryté pole)
+  const [cfToken, setCfToken] = useState(""); // Turnstile token
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState(false);
+  const ts = useMemo(() => Date.now().toString(), []); // timestamp proti replay
+
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITEKEY || "";
+
   if (daySlots.length && !daySlots.find(s => s.id === slotId)) {
     setSlotId(daySlots[0].id);
   }
 
+  const canSubmit =
+    !!slotId &&
+    name.trim().length >= 2 &&
+    /\S+@\S+\.\S+/.test(email) &&
+    phone.trim().length >= 6 &&
+    !!cfToken &&
+    !busy;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!slotId)       return alert("Vyber čas.");
-    if (!name.trim())  return alert("Zadaj meno.");
-    if (!email.trim()) return alert("Zadaj e-mail.");
-    if (!phone.trim()) return alert("Zadaj telefón.");
+    if (!canSubmit) return;
+
+    setBusy(true);
+    setErr("");
+    setOk(false);
 
     try {
       const res = await fetch("/api/reservations", {
@@ -153,13 +173,21 @@ function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] })
           name: name.trim(),
           email: email.trim(),
           phone: phone.trim(),
+          // ochrany:
+          hp,
+          cfToken,
+          ts,
         }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j?.error || "Odoslanie zlyhalo");
+      if (!res.ok || !j?.ok) throw new Error(j?.error || "Odoslanie zlyhalo");
+      setOk(true);
+      setCfToken(""); // vypnut token po úspechu
       window.location.href = "/rezervacia/ok";
-    } catch (err: any) {
-      alert(err?.message || "Odoslanie zlyhalo");
+    } catch (error: any) {
+      setErr(error?.message || "Odoslanie zlyhalo");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -170,6 +198,17 @@ function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] })
 
   return (
     <form onSubmit={submit} className="w-full rounded border p-3 space-y-3">
+      {/* honeypot – skryté, bots to vyplnia */}
+      <input
+        name="website"
+        value={hp}
+        onChange={(e) => setHp(e.target.value)}
+        className="hidden"
+        autoComplete="off"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+
       <div className="text-xs opacity-70">Dátum: <strong>{fmt(date)}</strong></div>
 
       <label className="block">
@@ -196,9 +235,31 @@ function ReservationForm({ date, daySlots }: { date: string; daySlots: Slot[] })
         <input className="w-full border rounded px-3 py-2" value={phone} onChange={e=>setPhone(e.target.value)} />
       </label>
 
-      <button type="submit" className="w-full rounded bg-black text-white py-2 hover:bg-gray-800" disabled={!daySlots.length}>
-        Vybrať si termín
+      {/* Turnstile */}
+      {siteKey ? (
+        <Turnstile
+          sitekey={siteKey}
+          onSuccess={(t) => setCfToken(t)}
+          onExpire={() => setCfToken("")}
+          options={{ action: "reservation" }}
+          className="pt-2"
+        />
+      ) : (
+        <p className="text-xs text-red-600">
+          Chýba NEXT_PUBLIC_TURNSTILE_SITEKEY – overenie nebude fungovať.
+        </p>
+      )}
+
+      <button
+        type="submit"
+        className={`w-full rounded py-2 text-white ${canSubmit ? "bg-black" : "bg-black/50 cursor-not-allowed"}`}
+        disabled={!canSubmit}
+      >
+        {busy ? "Odosielam…" : "Vybrať si termín"}
       </button>
+
+      {err && <p className="text-xs text-red-600">{err}</p>}
+      {ok && <p className="text-xs text-green-700">Rezervácia odoslaná.</p>}
 
       <p className="text-xs opacity-70">* Klikateľné sú len dni, ktoré majú voľné termíny.</p>
     </form>

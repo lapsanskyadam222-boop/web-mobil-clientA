@@ -2,15 +2,36 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
 import { buildICS } from '@/lib/ics';
-import { sendReservationEmail } from '@/lib/sendEmail'; // alebo pôvodná cesta
+import { sendReservationEmail } from '@/lib/sendEmail';
+
+type VerifyResp = { success: boolean; "error-codes"?: string[] };
+
+async function verifyTurnstile(token: string, remoteIp?: string) {
+  const secret = process.env.TURNSTILE_SECRET;
+  if (!secret) return { ok: false, reason: 'TURNSTILE_SECRET missing' };
+
+  const form = new URLSearchParams();
+  form.append('secret', secret);
+  form.append('response', token);
+  if (remoteIp) form.append('remoteip', remoteIp);
+
+  const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    body: form,
+  });
+  const json = (await r.json()) as VerifyResp;
+  return { ok: !!json.success, reason: json["error-codes"]?.join(',') || '' };
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { slotId, name, email, phone } = body as {
+    const { slotId, name, email, phone, hp, cfToken, ts } = body as {
       slotId?: string; name?: string; email?: string; phone?: string;
+      hp?: string; cfToken?: string; ts?: string;
     };
 
+    // Základná validácia
     if (!slotId || !name || !email || !phone) {
       return NextResponse.json(
         { error: 'Chýba slotId, meno, e-mail alebo telefón.' },
@@ -18,6 +39,29 @@ export async function POST(req: Request) {
       );
     }
 
+    // Honeypot – musí byť prázdny
+    if (hp && String(hp).trim().length > 0) {
+      return NextResponse.json({ error: 'Spam detected (honeypot).' }, { status: 400 });
+    }
+
+    // Timestamp – musí byť rozumný (±10 min)
+    const now = Date.now();
+    const tsNum = Number(ts ?? 0);
+    if (!Number.isFinite(tsNum) || Math.abs(now - tsNum) > 10 * 60 * 1000) {
+      return NextResponse.json({ error: 'Neplatný čas odoslania.' }, { status: 400 });
+    }
+
+    // Turnstile – povinné a musí prejsť
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+    if (!cfToken) {
+      return NextResponse.json({ error: 'Chýbajúce overenie (Turnstile).' }, { status: 400 });
+    }
+    const verify = await verifyTurnstile(cfToken, ip);
+    if (!verify.ok) {
+      return NextResponse.json({ error: 'Neúspešné overenie (Turnstile).' }, { status: 400 });
+    }
+
+    // Rezervácia cez Supabase RPC
     const supa = getServiceClient();
     const { data, error } = await supa.rpc('book_slot', {
       p_slot_id: slotId,
@@ -36,11 +80,10 @@ export async function POST(req: Request) {
 
     // funkcia vracia riadok s názvami v_date, v_time:
     const resv = Array.isArray(data) ? data[0] : data;
-
     const dateStr = String(resv.v_date); // "YYYY-MM-DD"
     const timeStr = String(resv.v_time); // "HH:MM"
 
-    // vytvoríme ICS na presný lokálny čas bez problémov s timezone
+    // ICS
     const ics = buildICS({
       title: `Rezervácia: ${name} (${phone})`,
       date: dateStr,
@@ -56,7 +99,7 @@ export async function POST(req: Request) {
         `Termín: ${dateStr} ${timeStr}`,
     });
 
-    // predmet a telo nech používajú správny dátum/čas
+    // Email
     await sendReservationEmail?.(
       `Nová rezervácia ${dateStr} ${timeStr} — ${name}`,
       `<p><strong>Nová rezervácia</strong></p>
@@ -69,7 +112,10 @@ export async function POST(req: Request) {
       { filename: 'rezervacia.ics', content: ics }
     );
 
-    return NextResponse.json({ ok: true, reservation: { ...resv, date: dateStr, time: timeStr } }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, reservation: { ...resv, date: dateStr, time: timeStr } },
+      { status: 201 }
+    );
   } catch (e: any) {
     console.error(e);
     return NextResponse.json({ error: e?.message ?? 'Neznáma chyba' }, { status: 500 });
