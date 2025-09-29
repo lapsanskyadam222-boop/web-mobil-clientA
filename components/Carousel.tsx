@@ -6,19 +6,12 @@ import { useState, useRef, useEffect, TouchEvent, MouseEvent } from "react";
 type ImgObj = { src: string; alt?: string };
 
 type CarouselProps = {
-  /** Môže byť string[] alebo {src,alt}[] */
   images: Array<string | ImgObj>;
-  /** Alias pre spät. kompatibilitu – rovnaké ako frameAspect */
   aspect?: string;
-  /** Pomer rámu – napr. "4/5", "16/9", "1/1" */
   frameAspect?: string;
-  /** Ako sa obrázok vloží do rámu */
   fit?: "cover" | "contain";
-  /** Zaoblenie rohov (px) */
   radius?: number;
-  /** Max šírka na desktope (px) */
   desktopMaxWidth?: number;
-  /** CSS triedy na obal <section> (kvôli page.tsx) */
   className?: string;
 };
 
@@ -30,12 +23,12 @@ function normalizeImages(arr: Array<string | ImgObj>): ImgObj[] {
 
 export default function Carousel({
   images,
-  aspect,                 // alias
-  frameAspect = "4/5",    // IG pomer
-  fit = "cover",          // vyplniť rám (ako IG post)
-  radius = 12,            // mierne zaoblené rohy
-  desktopMaxWidth = 900,  // max šírka na desktope
-  className,              // ⬅️ pridané
+  aspect,
+  frameAspect = "4/5",
+  fit = "cover",
+  radius = 5,                // ⬅️ default 5px (jemné zaoblenie)
+  desktopMaxWidth = 900,
+  className,
 }: CarouselProps) {
   const items = normalizeImages(images);
   const [index, setIndex] = useState(0);
@@ -68,7 +61,6 @@ export default function Carousel({
   const prev = () => setIndex((i) => (i > 0 ? i - 1 : items.length - 1));
   const next = () => setIndex((i) => (i + 1) % items.length);
 
-  // podpora myši na PC
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
