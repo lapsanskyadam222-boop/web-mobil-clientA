@@ -5,16 +5,20 @@ import Image from 'next/image';
 
 type CarouselProps = {
   images: string[];
-  /** Pomer strán – napr. "16/9", "4/5", "1/1". Default "16/9". */
+  /** Alias z minulosti: ak zadáš `aspect`, použije sa ako `frameAspect`. */
   aspect?: string;
-  /** Zaoblenie rohov (px). Default 10. */
-  radius?: number;
-  /** Max. šírka na desktope (px). Default 1200. */
+  /** Pomer rámu (kvôli stabilnému layoutu), napr. "16/9", "4/5", "1/1". */
+  frameAspect?: string;
+  /** Max. šírka na desktope (px). */
   desktopMaxWidth?: number;
-  /** Vnútorné okraje na mobile (px). Default 8. */
+  /** Zaoblenie rohov rámu (px). */
+  radius?: number;
+  /** Vnútorné okraje na mobile (px). */
   mobilePadding?: number;
-  /** Rýchlosť animácie (ms). Default 260. */
+  /** Rýchlosť snap animácie (ms). */
   animMs?: number;
+  /** Ako vykresliť fotku vo vnútri rámu: "contain" (bez orezania) alebo "cover". */
+  fit?: 'contain' | 'cover';
   className?: string;
 };
 
@@ -29,112 +33,99 @@ function parseAspect(aspect?: string) {
 
 export default function Carousel({
   images,
-  aspect = '16/9',
-  radius = 10,
+  aspect, // alias
+  frameAspect = '16/9',
   desktopMaxWidth = 1200,
+  radius = 10,
   mobilePadding = 8,
   animMs = 260,
+  fit = 'contain', // default bez orezania
   className,
 }: CarouselProps) {
+  const resolvedAspect = aspect || frameAspect;
+
   const total = images.length;
   const [index, setIndex] = React.useState(0);
 
-  // track: [prev | current | next], v pokoji posunuté na -100%
   const prevIdx = (index - 1 + total) % total;
   const nextIdx = (index + 1) % total;
-  const TRACK_BASE = -100; // %
 
-  // swipe/drag stav
+  // --- Pointer Events (mobil aj PC) ---
   const frameRef = React.useRef<HTMLDivElement | null>(null);
+  const activePointerId = React.useRef<number | null>(null);
   const [dragging, setDragging] = React.useState(false);
-  const [deltaX, setDeltaX] = React.useState(0); // px
+  const [deltaX, setDeltaX] = React.useState(0);
   const startX = React.useRef(0);
   const lastX = React.useRef(0);
   const lastT = React.useRef(0);
   const velocity = React.useRef(0); // px/ms
-
-  // animácia po uvoľnení (IG-like snap)
   const [animating, setAnimating] = React.useState<false | 'prev' | 'next' | 'stay'>(false);
 
-  // prahy
-  const [threshold, setThreshold] = React.useState(100); // v px
-  React.useEffect(() => {
-    const el = frameRef.current;
-    if (el) setThreshold(Math.max(60, el.clientWidth * 0.18));
-  }, []);
-
-  // šírka pre výpočet delta → %
+  const [threshold, setThreshold] = React.useState(100);
   const [widthPx, setWidthPx] = React.useState(0);
   React.useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
-    const r = () => setWidthPx(el.clientWidth);
-    r();
-    const obs = new ResizeObserver(r);
-    obs.observe(el);
-    return () => obs.disconnect();
+    const onResize = () => {
+      const w = el.clientWidth;
+      setWidthPx(w);
+      setThreshold(Math.max(60, w * 0.18));
+    };
+    onResize();
+    const ro = new ResizeObserver(onResize);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   const pxToPercent = (px: number) => (widthPx ? (px / widthPx) * 100 : 0);
 
-  // gestá (touch/mouse)
-  const onStart = (clientX: number) => {
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerId.current !== null) return;
+    activePointerId.current = e.pointerId;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+
     setAnimating(false);
     setDragging(true);
-    startX.current = clientX;
-    lastX.current = clientX;
+    startX.current = e.clientX;
+    lastX.current = e.clientX;
     lastT.current = performance.now();
     velocity.current = 0;
   };
-
-  const onMove = (clientX: number) => {
-    if (!dragging) return;
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging || activePointerId.current !== e.pointerId) return;
     const now = performance.now();
-    const dx = clientX - startX.current;
+    const dx = e.clientX - startX.current;
     const dt = Math.max(16, now - lastT.current);
-    velocity.current = (clientX - lastX.current) / dt; // px/ms
-    lastX.current = clientX;
+    velocity.current = (e.clientX - lastX.current) / dt; // px/ms
+    lastX.current = e.clientX;
     lastT.current = now;
     setDeltaX(dx);
   };
-
-  const onEnd = () => {
+  const finishGesture = () => {
     if (!dragging) return;
     setDragging(false);
-
     const v = velocity.current * 1000; // px/s
     const goNext = deltaX < -threshold || (v < -250 && deltaX < -30);
     const goPrev = deltaX > threshold || (v > 250 && deltaX > 30);
-
-    if (goNext) {
-      setAnimating('next');
-    } else if (goPrev) {
-      setAnimating('prev');
-    } else {
-      setAnimating('stay');
-    }
+    if (goNext) setAnimating('next');
+    else if (goPrev) setAnimating('prev');
+    else setAnimating('stay');
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerId.current !== e.pointerId) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    activePointerId.current = null;
+    finishGesture();
+  };
+  const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerId.current !== e.pointerId) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    activePointerId.current = null;
+    finishGesture();
   };
 
-  // mouse
-  const onMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    onStart(e.clientX);
-    const onMoveDoc = (ev: MouseEvent) => onMove(ev.clientX);
-    const onUpDoc = () => {
-      onEnd();
-      document.removeEventListener('mousemove', onMoveDoc);
-      document.removeEventListener('mouseup', onUpDoc);
-    };
-    document.addEventListener('mousemove', onMoveDoc, { passive: true });
-    document.addEventListener('mouseup', onUpDoc, { passive: true });
-  };
-
-  // touch
-  const onTouchStart = (e: React.TouchEvent) => onStart(e.touches[0].clientX);
-  const onTouchMove = (e: React.TouchEvent) => onMove(e.touches[0].clientX);
-  const onTouchEnd = () => onEnd();
-
-  // klávesnica (bonus)
+  // klávesnica (voliteľne)
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') setAnimating('next');
@@ -144,13 +135,9 @@ export default function Carousel({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // po dokončení animácie „prehoď“ index a resetni track bez viditeľného skoku
   const onTransitionEnd = () => {
-    if (animating === 'next') {
-      setIndex((i) => (i + 1) % total);
-    } else if (animating === 'prev') {
-      setIndex((i) => (i - 1 + total) % total);
-    }
+    if (animating === 'next') setIndex((i) => (i + 1) % total);
+    else if (animating === 'prev') setIndex((i) => (i - 1 + total) % total);
     setAnimating(false);
     setDeltaX(0);
   };
@@ -163,30 +150,18 @@ export default function Carousel({
     );
   }
 
-  const ratio = parseAspect(aspect);
-
-  // výpočet translate:
-  // - v pokoji = -100%
-  // - počas ťahania = -100% + deltaX(px→%)
-  // - pri animácii:
-  //    * 'next' → na -200%
-  //    * 'prev' → na 0%
-  //    * 'stay' → späť na -100%
+  // IG-like prepojené posúvanie
+  const TRACK_BASE = -100; // %
   let translatePercent = TRACK_BASE;
-  if (dragging) {
-    translatePercent = TRACK_BASE + pxToPercent(deltaX);
-  } else if (animating === 'next') {
-    translatePercent = -200;
-  } else if (animating === 'prev') {
-    translatePercent = 0;
-  } else if (animating === 'stay') {
-    translatePercent = TRACK_BASE;
-  }
+  if (dragging) translatePercent = TRACK_BASE + pxToPercent(deltaX);
+  else if (animating === 'next') translatePercent = -200;
+  else if (animating === 'prev') translatePercent = 0;
+  else if (animating === 'stay') translatePercent = TRACK_BASE;
 
   const trackTransition =
-    dragging || animating === false ? 'none' : `transform ${animMs}ms cubic-bezier(.22,.61,.36,1)`; // IG-ish ease-out
+    dragging || animating === false ? 'none' : `transform ${animMs}ms cubic-bezier(.22,.61,.36,1)`;
 
-  const active = index;
+  const ratio = parseAspect(resolvedAspect);
 
   return (
     <section className={className}>
@@ -199,18 +174,19 @@ export default function Carousel({
             overflow: 'hidden',
             position: 'relative',
             width: '100%',
-            aspectRatio: aspect,
+            aspectRatio: resolvedAspect,
             height: `min(70vh, ${Math.round(desktopMaxWidth * ratio)}px)`,
             touchAction: 'pan-y',
             userSelect: dragging ? 'none' : 'auto',
-            cursor: dragging ? 'grabbing' : 'auto',
+            cursor: dragging ? 'grabbing' : 'grab',
+            background: fit === 'contain' ? '#0f0f0f' : undefined, // letterbox pre contain
           }}
-          onMouseDown={onMouseDown}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onDragStart={(e) => e.preventDefault()}
         >
-          {/* TRACK = 3 panely vedľa seba */}
           <div
             className="carousel-track"
             style={{
@@ -224,51 +200,19 @@ export default function Carousel({
             }}
             onTransitionEnd={onTransitionEnd}
           >
-            {/* PREV */}
-            <Slide src={images[prevIdx]} alt={`foto-${prevIdx + 1}`} priority={false} />
-
-            {/* CURRENT */}
-            <Slide src={images[active]} alt={`foto-${active + 1}`} priority />
-
-            {/* NEXT */}
-            <Slide src={images[nextIdx]} alt={`foto-${nextIdx + 1}`} priority={false} />
+            <Slide src={images[prevIdx]} alt={`foto-${prevIdx + 1}`} fit={fit} />
+            <Slide src={images[index]} alt={`foto-${index + 1}`} fit={fit} priority />
+            <Slide src={images[nextIdx]} alt={`foto-${nextIdx + 1}`} fit={fit} />
           </div>
         </div>
 
-        {/* ovládanie (zostáva) */}
-        <div className="carousel-controls">
-          <button
-            className="btn"
-            onClick={() => setAnimating('prev')}
-            aria-label="Predošlá"
-          >
-            ‹
-          </button>
-          <div className="count">
-            {active + 1} / {total}
-          </div>
-          <button
-            className="btn"
-            onClick={() => setAnimating('next')}
-            aria-label="Ďalšia"
-          >
-            ›
-          </button>
-        </div>
-
-        {/* body */}
+        {/* bodky (bez šípok) */}
         <div className="dots">
           {images.map((_, i) => (
             <button
               key={i}
-              className={`dot ${i === active ? 'dot--active' : ''}`}
-              onClick={() => {
-                if (i === active) return;
-                // pri skoku vzdialenom o 1 použijeme animáciu; inak nastavíme rovno index
-                if ((i === (active + 1) % total)) setAnimating('next');
-                else if (i === (active - 1 + total) % total) setAnimating('prev');
-                else setIndex(i);
-              }}
+              className={`dot ${i === index ? 'dot--active' : ''}`}
+              onClick={() => setIndex(i)}
               aria-label={`Snímka ${i + 1}`}
             />
           ))}
@@ -282,26 +226,8 @@ export default function Carousel({
           margin-left: auto;
           margin-right: auto;
         }
-        .carousel-controls {
-          margin-top: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        .btn {
-          border: 1px solid rgba(0, 0, 0, 0.12);
-          border-radius: 12px;
-          padding: 6px 10px;
-          line-height: 1;
-          font-size: 20px;
-          background: white;
-        }
-        .count {
-          font-size: 12px;
-          opacity: 0.7;
-        }
         .dots {
-          margin-top: 6px;
+          margin-top: 8px;
           display: flex;
           flex-wrap: wrap;
           gap: 6px;
@@ -314,7 +240,9 @@ export default function Carousel({
           background: #d1d5db;
         }
         .dot--active {
-          background: #111827;
+          background: #ffffff;
+          outline: 2px solid #111827;
+          outline-offset: 2px;
         }
 
         @media (max-width: 1023px) {
@@ -332,7 +260,17 @@ export default function Carousel({
   );
 }
 
-function Slide({ src, alt, priority }: { src: string; alt: string; priority?: boolean }) {
+function Slide({
+  src,
+  alt,
+  fit,
+  priority,
+}: {
+  src: string;
+  alt: string;
+  fit: 'contain' | 'cover';
+  priority?: boolean;
+}) {
   return (
     <div style={{ position: 'relative' }}>
       <Image
@@ -341,7 +279,9 @@ function Slide({ src, alt, priority }: { src: string; alt: string; priority?: bo
         fill
         sizes="(max-width: 768px) 100vw, 1000px"
         priority={!!priority}
-        style={{ objectFit: 'cover' }}
+        style={{ objectFit: fit, userSelect: 'none' }}
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
       />
     </div>
   );
