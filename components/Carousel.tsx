@@ -13,7 +13,7 @@ type CarouselProps = {
   desktopMaxWidth?: number;
   /** Vnútorné okraje na mobile (px). Default 8. */
   mobilePadding?: number;
-  /** Rýchlosť animácie (ms). Default 280. */
+  /** Rýchlosť animácie (ms). Default 260. */
   animMs?: number;
   className?: string;
 };
@@ -33,37 +33,37 @@ export default function Carousel({
   radius = 10,
   desktopMaxWidth = 1200,
   mobilePadding = 8,
-  animMs = 280,
+  animMs = 260,
   className,
 }: CarouselProps) {
   const total = images.length;
   const [index, setIndex] = React.useState(0);
 
-  // ---- Swipe state ----
+  // track: [prev | current | next], v pokoji posunuté na -100%
+  const prevIdx = (index - 1 + total) % total;
+  const nextIdx = (index + 1) % total;
+  const TRACK_BASE = -100; // %
+
+  // swipe/drag stav
   const frameRef = React.useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = React.useState(false);
-  const [deltaX, setDeltaX] = React.useState(0);
+  const [deltaX, setDeltaX] = React.useState(0); // px
   const startX = React.useRef(0);
   const lastX = React.useRef(0);
   const lastT = React.useRef(0);
-  const velocity = React.useRef(0);
+  const velocity = React.useRef(0); // px/ms
 
-  // threshold podľa šírky (cca 18%)
-  const [threshold, setThreshold] = React.useState(100);
+  // animácia po uvoľnení (IG-like snap)
+  const [animating, setAnimating] = React.useState<false | 'prev' | 'next' | 'stay'>(false);
+
+  // prahy
+  const [threshold, setThreshold] = React.useState(100); // v px
   React.useEffect(() => {
     const el = frameRef.current;
     if (el) setThreshold(Math.max(60, el.clientWidth * 0.18));
   }, []);
 
-  // pomocné indexy so zalamovaním
-  const prevIdx = (index - 1 + total) % total;
-  const nextIdx = (index + 1) % total;
-
-  // Počas ťahania posúvame „track“ o deltaX (px):
-  // Track má 3 slidy vedľa seba: [prev|curr|next]
-  // V pokoji je uprostred (-100%) → transformX = -width
-  // S posunom pridáme deltaX.
-  const trackBaseTranslate = -100; // percent (stredný panel)
+  // šírka pre výpočet delta → %
   const [widthPx, setWidthPx] = React.useState(0);
   React.useEffect(() => {
     const el = frameRef.current;
@@ -75,8 +75,11 @@ export default function Carousel({
     return () => obs.disconnect();
   }, []);
 
-  // Handlery – touch & mouse (desktop aj mobil)
+  const pxToPercent = (px: number) => (widthPx ? (px / widthPx) * 100 : 0);
+
+  // gestá (touch/mouse)
   const onStart = (clientX: number) => {
+    setAnimating(false);
     setDragging(true);
     startX.current = clientX;
     lastX.current = clientX;
@@ -104,12 +107,12 @@ export default function Carousel({
     const goPrev = deltaX > threshold || (v > 250 && deltaX > 30);
 
     if (goNext) {
-      setIndex((i) => (i + 1) % total);
+      setAnimating('next');
     } else if (goPrev) {
-      setIndex((i) => (i - 1 + total) % total);
+      setAnimating('prev');
+    } else {
+      setAnimating('stay');
     }
-    // po ukončení gestá vráť delta
-    setDeltaX(0);
   };
 
   // mouse
@@ -134,12 +137,23 @@ export default function Carousel({
   // klávesnica (bonus)
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') setIndex((i) => (i + 1) % total);
-      if (e.key === 'ArrowLeft') setIndex((i) => (i - 1 + total) % total);
+      if (e.key === 'ArrowRight') setAnimating('next');
+      if (e.key === 'ArrowLeft') setAnimating('prev');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [total]);
+  }, []);
+
+  // po dokončení animácie „prehoď“ index a resetni track bez viditeľného skoku
+  const onTransitionEnd = () => {
+    if (animating === 'next') {
+      setIndex((i) => (i + 1) % total);
+    } else if (animating === 'prev') {
+      setIndex((i) => (i - 1 + total) % total);
+    }
+    setAnimating(false);
+    setDeltaX(0);
+  };
 
   if (!total) {
     return (
@@ -150,6 +164,28 @@ export default function Carousel({
   }
 
   const ratio = parseAspect(aspect);
+
+  // výpočet translate:
+  // - v pokoji = -100%
+  // - počas ťahania = -100% + deltaX(px→%)
+  // - pri animácii:
+  //    * 'next' → na -200%
+  //    * 'prev' → na 0%
+  //    * 'stay' → späť na -100%
+  let translatePercent = TRACK_BASE;
+  if (dragging) {
+    translatePercent = TRACK_BASE + pxToPercent(deltaX);
+  } else if (animating === 'next') {
+    translatePercent = -200;
+  } else if (animating === 'prev') {
+    translatePercent = 0;
+  } else if (animating === 'stay') {
+    translatePercent = TRACK_BASE;
+  }
+
+  const trackTransition =
+    dragging || animating === false ? 'none' : `transform ${animMs}ms cubic-bezier(.22,.61,.36,1)`; // IG-ish ease-out
+
   const active = index;
 
   return (
@@ -167,13 +203,14 @@ export default function Carousel({
             height: `min(70vh, ${Math.round(desktopMaxWidth * ratio)}px)`,
             touchAction: 'pan-y',
             userSelect: dragging ? 'none' : 'auto',
+            cursor: dragging ? 'grabbing' : 'auto',
           }}
           onMouseDown={onMouseDown}
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
         >
-          {/* TRACK (šírka 300%, posunutý na -100% + deltaX v px) */}
+          {/* TRACK = 3 panely vedľa seba */}
           <div
             className="carousel-track"
             style={{
@@ -181,9 +218,11 @@ export default function Carousel({
               inset: 0,
               display: 'grid',
               gridTemplateColumns: '100% 100% 100%',
-              transform: `translateX(calc(${trackBaseTranslate}% + ${dragging ? deltaX : 0}px))`,
-              transition: dragging ? 'none' : `transform ${animMs}ms ease`,
+              transform: `translateX(${translatePercent}%)`,
+              transition: trackTransition,
+              willChange: 'transform',
             }}
+            onTransitionEnd={onTransitionEnd}
           >
             {/* PREV */}
             <Slide src={images[prevIdx]} alt={`foto-${prevIdx + 1}`} priority={false} />
@@ -196,11 +235,11 @@ export default function Carousel({
           </div>
         </div>
 
-        {/* ovládanie */}
+        {/* ovládanie (zostáva) */}
         <div className="carousel-controls">
           <button
             className="btn"
-            onClick={() => setIndex((i) => (i - 1 + total) % total)}
+            onClick={() => setAnimating('prev')}
             aria-label="Predošlá"
           >
             ‹
@@ -210,7 +249,7 @@ export default function Carousel({
           </div>
           <button
             className="btn"
-            onClick={() => setIndex((i) => (i + 1) % total)}
+            onClick={() => setAnimating('next')}
             aria-label="Ďalšia"
           >
             ›
@@ -223,7 +262,13 @@ export default function Carousel({
             <button
               key={i}
               className={`dot ${i === active ? 'dot--active' : ''}`}
-              onClick={() => setIndex(i)}
+              onClick={() => {
+                if (i === active) return;
+                // pri skoku vzdialenom o 1 použijeme animáciu; inak nastavíme rovno index
+                if ((i === (active + 1) % total)) setAnimating('next');
+                else if (i === (active - 1 + total) % total) setAnimating('prev');
+                else setIndex(i);
+              }}
               aria-label={`Snímka ${i + 1}`}
             />
           ))}
