@@ -5,14 +5,16 @@ import Image from 'next/image';
 
 type CarouselProps = {
   images: string[];
-  /** Pomer strán – napr. "4/5", "1/1", "16/9". */
+  /** Pomer strán – napr. "16/9", "4/5", "1/1". Default "16/9". */
   aspect?: string;
-  /** Jemný rádius rohov v px (default 6). */
-  edgeRadius?: number;
-  /** Max. šírka na desktope (px) — desktop bude vždy centrovaný. */
+  /** Zaoblenie rohov (px). Default 10. */
+  radius?: number;
+  /** Max. šírka na desktope (px). Default 1200. */
   desktopMaxWidth?: number;
-  /** Mobilný vnútorný “gutter” v px (default 8). */
+  /** Vnútorné okraje na mobile (px). Default 8. */
   mobilePadding?: number;
+  /** Rýchlosť animácie (ms). Default 280. */
+  animMs?: number;
   className?: string;
 };
 
@@ -20,7 +22,7 @@ function parseAspect(aspect?: string) {
   if (!aspect) return 9 / 16;
   const m = aspect.split('/').map((x) => Number(x.trim()));
   if (m.length === 2 && m.every((n) => Number.isFinite(n) && n > 0)) {
-    return m[1] / m[0];
+    return m[1] / m[0]; // height/width
   }
   return 9 / 16;
 }
@@ -28,23 +30,108 @@ function parseAspect(aspect?: string) {
 export default function Carousel({
   images,
   aspect = '16/9',
-  edgeRadius = 6,
+  radius = 10,
   desktopMaxWidth = 1200,
   mobilePadding = 8,
+  animMs = 280,
   className,
 }: CarouselProps) {
-  const [index, setIndex] = React.useState(0);
   const total = images.length;
-  const ratio = parseAspect(aspect);
+  const [index, setIndex] = React.useState(0);
 
-  // zobrazujeme len aktívny + susedov, aby sa neťahali všetky naraz
-  const visible = React.useMemo(() => {
-    if (total === 0) return new Set<number>();
-    const prev = (index - 1 + total) % total;
-    const next = (index + 1) % total;
-    return new Set([prev, index, next]);
-  }, [index, total]);
+  // ---- Swipe state ----
+  const frameRef = React.useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = React.useState(false);
+  const [deltaX, setDeltaX] = React.useState(0);
+  const startX = React.useRef(0);
+  const lastX = React.useRef(0);
+  const lastT = React.useRef(0);
+  const velocity = React.useRef(0);
 
+  // threshold podľa šírky (cca 18%)
+  const [threshold, setThreshold] = React.useState(100);
+  React.useEffect(() => {
+    const el = frameRef.current;
+    if (el) setThreshold(Math.max(60, el.clientWidth * 0.18));
+  }, []);
+
+  // pomocné indexy so zalamovaním
+  const prevIdx = (index - 1 + total) % total;
+  const nextIdx = (index + 1) % total;
+
+  // Počas ťahania posúvame „track“ o deltaX (px):
+  // Track má 3 slidy vedľa seba: [prev|curr|next]
+  // V pokoji je uprostred (-100%) → transformX = -width
+  // S posunom pridáme deltaX.
+  const trackBaseTranslate = -100; // percent (stredný panel)
+  const [widthPx, setWidthPx] = React.useState(0);
+  React.useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const r = () => setWidthPx(el.clientWidth);
+    r();
+    const obs = new ResizeObserver(r);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // Handlery – touch & mouse (desktop aj mobil)
+  const onStart = (clientX: number) => {
+    setDragging(true);
+    startX.current = clientX;
+    lastX.current = clientX;
+    lastT.current = performance.now();
+    velocity.current = 0;
+  };
+
+  const onMove = (clientX: number) => {
+    if (!dragging) return;
+    const now = performance.now();
+    const dx = clientX - startX.current;
+    const dt = Math.max(16, now - lastT.current);
+    velocity.current = (clientX - lastX.current) / dt; // px/ms
+    lastX.current = clientX;
+    lastT.current = now;
+    setDeltaX(dx);
+  };
+
+  const onEnd = () => {
+    if (!dragging) return;
+    setDragging(false);
+
+    const v = velocity.current * 1000; // px/s
+    const goNext = deltaX < -threshold || (v < -250 && deltaX < -30);
+    const goPrev = deltaX > threshold || (v > 250 && deltaX > 30);
+
+    if (goNext) {
+      setIndex((i) => (i + 1) % total);
+    } else if (goPrev) {
+      setIndex((i) => (i - 1 + total) % total);
+    }
+    // po ukončení gestá vráť delta
+    setDeltaX(0);
+  };
+
+  // mouse
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onStart(e.clientX);
+    const onMoveDoc = (ev: MouseEvent) => onMove(ev.clientX);
+    const onUpDoc = () => {
+      onEnd();
+      document.removeEventListener('mousemove', onMoveDoc);
+      document.removeEventListener('mouseup', onUpDoc);
+    };
+    document.addEventListener('mousemove', onMoveDoc, { passive: true });
+    document.addEventListener('mouseup', onUpDoc, { passive: true });
+  };
+
+  // touch
+  const onTouchStart = (e: React.TouchEvent) => onStart(e.touches[0].clientX);
+  const onTouchMove = (e: React.TouchEvent) => onMove(e.touches[0].clientX);
+  const onTouchEnd = () => onEnd();
+
+  // klávesnica (bonus)
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') setIndex((i) => (i + 1) % total);
@@ -62,80 +149,80 @@ export default function Carousel({
     );
   }
 
+  const ratio = parseAspect(aspect);
+  const active = index;
+
   return (
     <section className={className}>
       <div className="carousel-outer">
         <div
+          ref={frameRef}
           className="carousel-frame"
           style={{
-            borderRadius: edgeRadius,
+            borderRadius: radius,
             overflow: 'hidden',
             position: 'relative',
             width: '100%',
-            // aspect-ratio nie je podporené v starších prehliadačoch, ale nám stačí moderné:
             aspectRatio: aspect,
-            // fallback výška pre prípad, že by prehliadač aspect-ratio ignoroval
             height: `min(70vh, ${Math.round(desktopMaxWidth * ratio)}px)`,
+            touchAction: 'pan-y',
+            userSelect: dragging ? 'none' : 'auto',
           }}
+          onMouseDown={onMouseDown}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
         >
-          {images.map((src, i) => {
-            const show = visible.has(i);
-            const active = i === index;
-            return (
-              <div
-                key={i}
-                className="slide"
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  opacity: active ? 1 : 0,
-                  transition: 'opacity 220ms ease',
-                  pointerEvents: active ? 'auto' : 'none',
-                }}
-                aria-hidden={!active}
-              >
-                {show && (
-                  <Image
-                    src={src}
-                    alt={`foto-${i + 1}`}
-                    fill
-                    // nech Next/Image vyberie vhodnú veľkosť
-                    sizes="(max-width: 768px) 100vw, 1000px"
-                    priority={active} // aktívny nech ide hneď, susedia budú lazy
-                    style={{ objectFit: 'cover' }}
-                    // NOTE: žiadne manuálne farby/štýly, nech optimalizuje Next
-                  />
-                )}
-              </div>
-            );
-          })}
+          {/* TRACK (šírka 300%, posunutý na -100% + deltaX v px) */}
+          <div
+            className="carousel-track"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'grid',
+              gridTemplateColumns: '100% 100% 100%',
+              transform: `translateX(calc(${trackBaseTranslate}% + ${dragging ? deltaX : 0}px))`,
+              transition: dragging ? 'none' : `transform ${animMs}ms ease`,
+            }}
+          >
+            {/* PREV */}
+            <Slide src={images[prevIdx]} alt={`foto-${prevIdx + 1}`} priority={false} />
+
+            {/* CURRENT */}
+            <Slide src={images[active]} alt={`foto-${active + 1}`} priority />
+
+            {/* NEXT */}
+            <Slide src={images[nextIdx]} alt={`foto-${nextIdx + 1}`} priority={false} />
+          </div>
         </div>
 
+        {/* ovládanie */}
         <div className="carousel-controls">
           <button
             className="btn"
             onClick={() => setIndex((i) => (i - 1 + total) % total)}
-            aria-label="Predošlá fotka"
+            aria-label="Predošlá"
           >
             ‹
           </button>
           <div className="count">
-            {index + 1} / {total}
+            {active + 1} / {total}
           </div>
           <button
             className="btn"
             onClick={() => setIndex((i) => (i + 1) % total)}
-            aria-label="Ďalšia fotka"
+            aria-label="Ďalšia"
           >
             ›
           </button>
         </div>
 
+        {/* body */}
         <div className="dots">
           {images.map((_, i) => (
             <button
               key={i}
-              className={`dot ${i === index ? 'dot--active' : ''}`}
+              className={`dot ${i === active ? 'dot--active' : ''}`}
               onClick={() => setIndex(i)}
               aria-label={`Snímka ${i + 1}`}
             />
@@ -197,5 +284,20 @@ export default function Carousel({
         }
       `}</style>
     </section>
+  );
+}
+
+function Slide({ src, alt, priority }: { src: string; alt: string; priority?: boolean }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        sizes="(max-width: 768px) 100vw, 1000px"
+        priority={!!priority}
+        style={{ objectFit: 'cover' }}
+      />
+    </div>
   );
 }
