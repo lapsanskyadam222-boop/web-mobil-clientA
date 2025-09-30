@@ -1,86 +1,122 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { downscaleImageFile } from "@/lib/image-opt";
+
+const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN || ""; // na klienta daj „public“ variant, alebo vynechaj a rieš cez session
+
+type Row = { name: string; status: "pending"|"optimizing"|"uploading"|"saved"|"error"; message?: string; url?: string; };
 
 export default function AdminImageUploader() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [url, setUrl] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [dragOver, setDragOver] = useState(false);
 
-  async function handleFiles(files: FileList | null) {
-    const file = files?.[0];
-    if (!file) return;
+  const handleFiles = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const list = Array.from(files);
+    const initial: Row[] = list.map(f => ({ name: f.name, status: "pending" }));
+    setRows(prev => [...initial, ...prev]);
+
+    for (const file of list) {
+      await processOne(file);
+    }
+  }, []);
+
+  async function processOne(file: File) {
+    const update = (patch: Partial<Row>) =>
+      setRows(prev => prev.map(r => r.name === file.name ? { ...r, ...patch } : r));
 
     try {
-      setUploading(true);
-      setMsg("Optimalizujem…");
-
-      // 1) downscale + recompress → WebP/AVIF ~1600px
-      const optimized = await downscaleImageFile(file, {
+      update({ status: "optimizing", message: "Optimalizujem…" });
+      const { blob, width, height } = await downscaleImageFile(file, {
         maxWidth: 1600,
         maxHeight: 1600,
         mimeType: "image/webp",
         quality: 0.82,
       });
 
-      setMsg("Nahrávam…");
-
-      // 2) upload priamo do nášho API (ktoré uloží do Blob Storage)
-      const res = await fetch("/api/upload", {
+      update({ status: "uploading", message: "Nahrávam…" });
+      const up = await fetch("/api/upload", {
         method: "POST",
-        // tip: keď pošleme čistý Blob, prehliadač nastaví správny content-type
-        headers: {
-          "content-type": (optimized as any).type || "application/octet-stream",
-        },
-        body: optimized,
+        headers: { "content-type": (blob as any).type || "application/octet-stream" },
+        body: blob,
       });
 
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e?.error || `Upload failed (${res.status})`);
+      if (!up.ok) {
+        const e = await up.json().catch(() => ({}));
+        throw new Error(e?.error || `Upload failed (${up.status})`);
+      }
+      const { url } = await up.json();
+
+      // zapíš do manifestu
+      const alt = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+      const add = await fetch("/api/carousel/manifest", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-admin-token": ADMIN_TOKEN || (undefined as any),
+        },
+        body: JSON.stringify({
+          action: "add",
+          item: { url, alt, width, height },
+        }),
+      });
+
+      if (!add.ok) {
+        const e = await add.json().catch(() => ({}));
+        throw new Error(e?.error || `Manifest update failed (${add.status})`);
       }
 
-      const data = await res.json();
-      setUrl(data.url);
-      setMsg("✅ Hotovo");
+      update({ status: "saved", message: "Hotovo", url });
     } catch (e: any) {
       console.error(e);
-      setMsg(`❌ ${e?.message || "Chyba pri uploade"}`);
-    } finally {
-      setUploading(false);
+      update({ status: "error", message: e?.message || "Chyba" });
     }
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
+    <div className="space-y-4">
+      <div
+        className={`border-2 border-dashed rounded-xl p-6 text-center ${dragOver ? "bg-neutral-900/20" : "bg-neutral-900/10"}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
+      >
+        <p className="mb-2 text-sm text-neutral-400">Pretiahni obrázky sem, alebo</p>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="px-3 py-1 rounded bg-neutral-800 text-white"
+        >
+          Vybrať súbory
+        </button>
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
+          multiple
+          className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
-        <button
-          type="button"
-          className="px-3 py-1 rounded bg-neutral-800 text-white disabled:opacity-50"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-        >
-          {uploading ? "Prebieha…" : "Vybrať obrázok"}
-        </button>
       </div>
 
-      {msg && <p className="text-sm text-neutral-500">{msg}</p>}
-
-      {url && (
-        <p className="text-sm">
-          URL:{" "}
-          <a href={url} target="_blank" rel="noreferrer" className="text-blue-500 underline">
-            {url}
-          </a>
-        </p>
+      {rows.length > 0 && (
+        <ul className="space-y-2 text-sm">
+          {rows.map(r => (
+            <li key={r.name} className="flex items-center justify-between rounded-md px-3 py-2 bg-neutral-900/30">
+              <span className="truncate">{r.name}</span>
+              <span className={
+                r.status === "saved" ? "text-green-400" :
+                r.status === "error" ? "text-red-400" :
+                "text-neutral-400"
+              }>
+                {r.message || r.status}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

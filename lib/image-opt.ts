@@ -1,17 +1,13 @@
 // lib/image-opt.ts
-// Downscale + (voliteľná) konverzia do WebP/AVIF priamo v prehliadači
-// Výstupom je Blob pripravený na upload.
-
-// Max dĺžka kratšej strany/rozmerov – šetrí bandwidth aj Image Transformations.
 export type DownscaleOptions = {
-  maxWidth?: number;     // default 1600
-  maxHeight?: number;    // default 1600
+  maxWidth?: number;
+  maxHeight?: number;
   mimeType?: 'image/webp' | 'image/jpeg' | 'image/avif';
-  quality?: number;      // 0..1 (default 0.82)
-  keepIfSmaller?: boolean; // ak je už menší ako limit, neškáluj (default true)
+  quality?: number;
+  keepIfSmaller?: boolean;
 };
 
-export async function downscaleImageFile(file: File, opts: DownscaleOptions = {}): Promise<Blob> {
+export async function downscaleImageFile(file: File, opts: DownscaleOptions = {}): Promise<{ blob: Blob, width: number, height: number }> {
   const {
     maxWidth = 1600,
     maxHeight = 1600,
@@ -20,22 +16,17 @@ export async function downscaleImageFile(file: File, opts: DownscaleOptions = {}
     keepIfSmaller = true,
   } = opts;
 
-  // Pre GIF/SVG a pod. – nechaj pôvodný obsah
-  if (!file.type.startsWith('image/')) return file;
+  if (!file.type.startsWith('image/')) return { blob: file, width: 0, height: 0 };
 
-  // Načítaj bitmapu
   const imgDataUrl = await fileToDataURL(file);
   const bmp = await createImageBitmap(await (await fetch(imgDataUrl)).blob());
+  let width = bmp.width, height = bmp.height;
 
-  let { width, height } = bmp;
-
-  // ak netreba zmenšovať
   if (keepIfSmaller && width <= maxWidth && height <= maxHeight) {
-    // Môžeme aspoň recompress → ak by si chcel striktne zachovať originál, vráť "file"
-    return await bitmapToBlob(bmp, mimeType, quality);
+    const blob0 = await bitmapToBlob(bmp, mimeType, quality);
+    return { blob: blob0, width, height };
   }
 
-  // vypočítaj scale s zachovaním pomeru
   const scale = Math.min(maxWidth / width, maxHeight / height);
   const dstW = Math.round(width * scale);
   const dstH = Math.round(height * scale);
@@ -43,23 +34,16 @@ export async function downscaleImageFile(file: File, opts: DownscaleOptions = {}
   const canvas = document.createElement('canvas');
   canvas.width = dstW;
   canvas.height = dstH;
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas 2D context not available');
-
-  // lepší sampling
+  const ctx = canvas.getContext('2d')!;
   ctx.imageSmoothingEnabled = true;
   (ctx as any).imageSmoothingQuality = 'high';
-
   ctx.drawImage(bmp, 0, 0, dstW, dstH);
 
-  // priorita AVIF/WebP → výrazne menšie súbory pri rovnakej vizuálnej kvalite
-  const outMime = mimeType;
   const blob = await new Promise<Blob>((resolve) =>
-    canvas.toBlob((b) => resolve(b as Blob), outMime, quality),
+    canvas.toBlob((b) => resolve(b as Blob), mimeType, quality),
   );
 
-  return blob ?? file;
+  return { blob: blob ?? file, width: dstW, height: dstH };
 }
 
 function fileToDataURL(file: File): Promise<string> {
