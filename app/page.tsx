@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Carousel from '@/components/Carousel';
 import { SiteContent } from '@/lib/types';
 import { getBaseUrlServer } from '@/lib/getBaseUrlServer';
+import FooterContact from '@/components/FooterContact';
 
 type Theme =
   | { mode: 'light' }
@@ -40,6 +41,9 @@ export default async function HomePage() {
           {result.status ? `HTTP ${result.status}\n` : ''}
           {result.error ?? ''}
         </pre>
+        <div className="mt-8">
+          <FooterContact />
+        </div>
       </main>
     );
   }
@@ -112,6 +116,11 @@ export default async function HomePage() {
                 draggable={false}
               />
             </Link>
+          </div>
+
+          {/* Footer kontakty – rovnaká medzera ako nad CTA */}
+          <div className="mt-8 w-full">
+            <FooterContact />
           </div>
         </section>
       </main>
