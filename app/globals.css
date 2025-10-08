@@ -91,3 +91,12 @@ input[type="reset"] {
 .min-w-0 { min-width: 0; }
 .object-contain { object-fit: contain; }
 .mt-2 { margin-top: .5rem; }
+/* Admin text na homepage – vždy semibold */
+.admin-semi, .admin-semi * {
+  font-weight: 600 !important;
+}
+@supports (font-variation-settings: normal) {
+  .admin-semi {
+    font-variation-settings: "wght" 600;
+  }
+}

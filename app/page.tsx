@@ -68,14 +68,12 @@ export default async function HomePage() {
 
   return (
     <>
-      {/* CSS premenné pre celú stránku */}
       <style>{`:root{--page-bg:${bg};--page-fg:${fg};}`}</style>
 
       <main className="min-h-dvh antialiased">
         <section className="flex flex-col items-center gap-4">
           {/* LOGO */}
           {logoUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={logoUrl}
               alt="logo"
@@ -93,15 +91,11 @@ export default async function HomePage() {
             </div>
           )}
 
-          {/* TEXT – semibold */}
+          {/* TEXT – semibold cez vlastnú triedu */}
           {text ? (
             <article
-              className="text-center"
-              style={{
-                maxWidth: 'min(92vw, 900px)',
-                whiteSpace: 'pre-line',
-                fontWeight: 600, // semibold
-              }}
+              className="text-center admin-semi"
+              style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
             >
               {text}
             </article>
@@ -116,7 +110,6 @@ export default async function HomePage() {
               aria-label="Rezervácie"
               className="inline-block active:translate-y-[1px] transition"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/cta/rezervaciebtn.svg?v=1"
                 alt="Rezervácie"
@@ -126,7 +119,7 @@ export default async function HomePage() {
             </Link>
           </div>
 
-          {/* Footer kontakty – rovnaká medzera ako nad CTA */}
+          {/* Footer kontakty */}
           <div className="mt-8 w-full">
             <FooterContact />
           </div>
