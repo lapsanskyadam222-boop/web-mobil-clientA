@@ -93,10 +93,10 @@ export default async function HomePage() {
             </div>
           )}
 
-          {/* TEXT – zachová odseky, ak vkladáš plain text */}
+          {/* TEXT – teraz BOLD */}
           {text ? (
             <article
-              className="prose text-center"
+              className="prose text-center font-bold"
               style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
             >
               {text}

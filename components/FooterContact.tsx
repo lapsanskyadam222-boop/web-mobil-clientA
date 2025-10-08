@@ -15,11 +15,11 @@ export default async function FooterContact() {
   const ig = data?.instagram_url?.trim() || '';
   const fb = data?.facebook_url?.trim() || '';
 
-  // inline štýly: farba z témy, bez underline, hrubé písmo – prebijú default
+  // tenké písmo, farba z témy, bez podčiarknutia
   const linkStyle: React.CSSProperties = {
     color: 'var(--page-fg)',
     textDecoration: 'none',
-    fontWeight: 600,
+    fontWeight: 400, // <-- tenké
   };
 
   return (
