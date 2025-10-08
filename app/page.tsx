@@ -22,7 +22,8 @@ async function getContent(): Promise<{
     const base = getBaseUrlServer();
     const url = `${base}/api/content`;
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
+    if (!res.ok)
+      return { ok: false, status: res.status, error: `Fetch ${url} failed with ${res.status}` };
     const json = (await res.json()) as SiteContent & { theme?: Theme; updatedAt?: string };
     return { ok: true, data: json };
   } catch (e: any) {
@@ -67,10 +68,9 @@ export default async function HomePage() {
 
   return (
     <>
-      {/* Tu globálne nastavíme CSS premenné pre celú stránku (html/body). */}
+      {/* CSS premenné pre celú stránku */}
       <style>{`:root{--page-bg:${bg};--page-fg:${fg};}`}</style>
 
-      {/* Obsah – layout sa postará o rámik/centrovanie, farby už prídu z body */}
       <main className="min-h-dvh antialiased">
         <section className="flex flex-col items-center gap-4">
           {/* LOGO */}
@@ -93,10 +93,10 @@ export default async function HomePage() {
             </div>
           )}
 
-          {/* TEXT – teraz BOLD */}
+          {/* TEXT – hrubým písmom */}
           {text ? (
             <article
-              className="prose text-center font-bold"
+              className="text-center font-bold"
               style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
             >
               {text}
@@ -107,7 +107,11 @@ export default async function HomePage() {
 
           {/* CTA */}
           <div className="mt-8 w-full flex justify-center">
-            <Link href="/rezervacia" aria-label="Rezervácie" className="inline-block active:translate-y-[1px] transition">
+            <Link
+              href="/rezervacia"
+              aria-label="Rezervácie"
+              className="inline-block active:translate-y-[1px] transition"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/cta/rezervaciebtn.svg?v=1"
