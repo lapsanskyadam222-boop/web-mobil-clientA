@@ -15,15 +15,20 @@ export default async function FooterContact() {
   const ig = data?.instagram_url?.trim() || '';
   const fb = data?.facebook_url?.trim() || '';
 
-  // tenké písmo, farba z témy, bez podčiarknutia
+  // linky: tenké písmo, farba z témy, bez podčiarknutia
   const linkStyle: React.CSSProperties = {
     color: 'var(--page-fg)',
     textDecoration: 'none',
-    fontWeight: 400, // <-- tenké
+    fontWeight: 400,
   };
 
   return (
     <footer className="py-6 text-center" style={{ color: 'var(--page-fg)' }}>
+      {/* Nadpis nad kontaktmi */}
+      <div className="mb-2">
+        <span style={{ fontWeight: 600 }}>Kontakty:</span>
+      </div>
+
       <div style={{ marginBottom: 8, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
         {phone && (
           <a href={`tel:${phone}`} style={linkStyle} aria-label={`Zavolať ${phone}`}>
