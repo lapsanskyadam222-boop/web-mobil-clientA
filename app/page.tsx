@@ -93,11 +93,15 @@ export default async function HomePage() {
             </div>
           )}
 
-          {/* TEXT – hrubým písmom */}
+          {/* TEXT – vynútené hrubé písmo (inline štýl) */}
           {text ? (
             <article
-              className="text-center font-bold"
-              style={{ maxWidth: 'min(92vw, 900px)', whiteSpace: 'pre-line' }}
+              className="text-center"
+              style={{
+                maxWidth: 'min(92vw, 900px)',
+                whiteSpace: 'pre-line',
+                fontWeight: 700, // ⬅️ tvrdé nastavenie hrúbky
+              }}
             >
               {text}
             </article>
