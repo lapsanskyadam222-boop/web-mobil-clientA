@@ -93,14 +93,14 @@ export default async function HomePage() {
             </div>
           )}
 
-          {/* TEXT – vynútené hrubé písmo (inline štýl) */}
+          {/* TEXT – semibold */}
           {text ? (
             <article
               className="text-center"
               style={{
                 maxWidth: 'min(92vw, 900px)',
                 whiteSpace: 'pre-line',
-                fontWeight: 700, // ⬅️ tvrdé nastavenie hrúbky
+                fontWeight: 600, // semibold
               }}
             >
               {text}
