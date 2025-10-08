@@ -2,8 +2,8 @@ import './globals.css';
 import type { ReactNode } from 'react';
 
 export const metadata = {
-  title: 'Web – logo, carousel, text',
-  description: 'Jednoduchý mobilný web s logom, carouselom a textom',
+  title: 'lezenie s NIKOL',
+  description: 'inštruktorka lezenia',
 };
 
 export const viewport = {
