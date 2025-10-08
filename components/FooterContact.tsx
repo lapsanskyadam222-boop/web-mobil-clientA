@@ -15,7 +15,7 @@ export default async function FooterContact() {
   const ig = data?.instagram_url?.trim() || '';
   const fb = data?.facebook_url?.trim() || '';
 
-  // linky: tenké písmo, farba z témy, bez podčiarknutia
+  // tenké linky + farba z témy + bez podčiarknutia
   const linkStyle: React.CSSProperties = {
     color: 'var(--page-fg)',
     textDecoration: 'none',
@@ -23,13 +23,22 @@ export default async function FooterContact() {
   };
 
   return (
-    <footer className="py-6 text-center" style={{ color: 'var(--page-fg)' }}>
-      {/* Nadpis nad kontaktmi */}
-      <div className="mb-2">
-        <span style={{ fontWeight: 600 }}>Kontakty:</span>
+    <footer className="py-6" style={{ color: 'var(--page-fg)' }}>
+      {/* Nadpis nad kontaktmi – vycentrovaný a tenký */}
+      <div style={{ marginBottom: 8, textAlign: 'center' }}>
+        <span style={{ fontWeight: 400 }}>Kontakty:</span>
       </div>
 
-      <div style={{ marginBottom: 8, display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+      <div
+        style={{
+          marginBottom: 8,
+          display: 'flex',
+          gap: 12,
+          justifyContent: 'center',
+          flexWrap: 'wrap',
+          textAlign: 'center',
+        }}
+      >
         {phone && (
           <a href={`tel:${phone}`} style={linkStyle} aria-label={`Zavolať ${phone}`}>
             📞 {phone}
@@ -41,7 +50,16 @@ export default async function FooterContact() {
           </a>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 12,
+          justifyContent: 'center',
+          flexWrap: 'wrap',
+          textAlign: 'center',
+        }}
+      >
         {ig && (
           <a href={ig} target="_blank" rel="noopener noreferrer" style={linkStyle}>
             Instagram
